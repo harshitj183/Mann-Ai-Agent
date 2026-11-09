@@ -1,0 +1,149 @@
+# Build and publish every image justpostgres needs, on a tag.
+#
+# The point is that a release does not depend on whoever happens to be at a
+# laptop. It also builds amd64 natively rather than under emulation, which for
+# the Postgres images — apt-installing PostGIS and friends — is the difference
+# between minutes and most of an hour.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish, e.g. 0.1.0"
+        required: true
+
+env:
+  NAMESPACE: hiteshchoudhary
+
+jobs:
+  # The two service images, built on native runners rather than under emulation.
+  #
+  # Emulating arm64 on an amd64 runner means QEMU interpreting a full pnpm
+  # install, a native better-sqlite3 compile and a Vite build. It is slow and it
+  # exhausts the runner. GitHub gives public repositories free arm64 runners, so
+  # each architecture builds on its own machine at native speed and a third job
+  # stitches the two into one multi-arch tag.
+  services:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: control-plane
+            dockerfile: apps/control-plane/Dockerfile
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - name: control-plane
+            dockerfile: apps/control-plane/Dockerfile
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+          - name: router
+            dockerfile: apps/router/Dockerfile
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - name: router
+            dockerfile: apps/router/Dockerfile
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Pushed by digest, with no tag. The merge job below turns the pair into
+      # the tags people actually pull.
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.NAMESPACE }}/justpostgres-${{ matrix.name }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Save the digest
+        run: |
+          mkdir -p /tmp/digests
+          echo "${{ steps.build.outputs.digest }}" > "/tmp/digests/${{ matrix.name }}-$(echo '${{ matrix.platform }}' | tr / -)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.name }}-${{ strategy.job-index }}
+          path: /tmp/digests/*
+          retention-days: 1
+
+  # Combine the per-architecture images into one tag each.
+  manifest:
+    needs: services
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        name: [control-plane, router]
+    steps:
+      - id: version
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        if: startsWith(github.ref, 'refs/tags/')
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-${{ matrix.name }}-*
+          merge-multiple: true
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create the multi-arch tags
+        run: |
+          REPO="${{ env.NAMESPACE }}/justpostgres-${{ matrix.name }}"
+          VERSION="${{ steps.version.outputs.value || inputs.version }}"
+          REFS=""
+          for f in /tmp/digests/*; do REFS="$REFS ${REPO}@$(cat "$f")"; done
+          docker buildx imagetools create -t "${REPO}:${VERSION}" -t "${REPO}:latest" $REFS
+          docker buildx imagetools inspect "${REPO}:${VERSION}"
+
+  # One job per major so they build in parallel. Each is a slow apt install and
+  # they are independent.
+  postgres:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        major: [16, 17, 18]
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: version
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        if: startsWith(github.ref, 'refs/tags/')
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: images/postgres
+          build-args: PG_MAJOR=${{ matrix.major }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          # The major tag is what the control plane resolves, and it moves with
+          # each release. The version-qualified tag is what you pin to when you
+          # need a specific build back.
+          tags: |
+            ${{ env.NAMESPACE }}/justpostgres-postgres:${{ matrix.major }}
+            ${{ env.NAMESPACE }}/justpostgres-postgres:${{ matrix.major }}-${{ steps.version.outputs.value || inputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

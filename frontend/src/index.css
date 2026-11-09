@@ -1,0 +1,138 @@
+*, *::before, *::after { box-sizing: border-box; }
+
+/* ══════════════════════════════════════
+   DARK THEME
+   ══════════════════════════════════════ */
+:root,
+[data-theme="dark"] {
+  /* Backgrounds */
+  --bg:              #121212;
+  --bg-2:            #1F2937;
+  --bg-3:            #2d3748;
+  --bg-input:        #1F2937;
+
+  /* Borders */
+  --border:          #374151;
+  --border-2:        #4B5563;
+
+  /* Text — all on dark bg */
+  --text-muted:      #6B7280;
+  --text:            #9CA3AF;
+  --text-2:          #D1D5DB;
+  --text-h:          #F9FAFB;
+
+  /* Sidebar — same dark bg in dark mode */
+  --sidebar-bg:      #1F2937;
+  --sidebar-text:    #9CA3AF;
+  --sidebar-text-h:  #F9FAFB;
+  --sidebar-border:  #374151;
+  --sidebar-hover:   #2d3748;
+
+  /* Accent — MANN brand: Rich Rose */
+  --accent:          #FF3D68;
+  --accent-2:        #e0294f;
+  --accent-glow:     rgba(255, 61, 104, 0.18);
+
+  /* Status */
+  --danger:          #F87171;
+  --danger-bg:       rgba(248, 113, 113, 0.1);
+  --success:         #34D399;
+
+  /* Chat */
+  --msg-ai-bg:       #1F2937;
+  --msg-ai-border:   #374151;
+  --msg-user-bg:     #374151;
+  --msg-user-color:  #F9FAFB;
+
+  /* Input / send */
+  --send-bg:         #374151;
+  --send-color:      #6B7280;
+
+  color-scheme: dark;
+}
+
+/* ══════════════════════════════════════
+   LIGHT THEME
+   ══════════════════════════════════════ */
+[data-theme="light"] {
+  /* Backgrounds */
+  --bg:              #FDFAF6;
+  --bg-2:            #F5EFE6;
+  --bg-3:            #EDE4D8;
+  --bg-input:        #FFFFFF;
+
+  /* Borders */
+  --border:          #D9CFC4;
+  --border-2:        #B5A99A;
+
+  /* Text — all on warm light bg */
+  --text-muted:      #9C8A78;
+  --text:            #7A6652;
+  --text-2:          #4A3728;
+  --text-h:          #1A0F05;
+
+  /* Sidebar — DARK navy, needs its own text vars */
+  --sidebar-bg:      #1C2541;
+  --sidebar-text:    #8D9DB8;
+  --sidebar-text-h:  #E8EDF5;
+  --sidebar-border:  #2D3A5C;
+  --sidebar-hover:   #253151;
+
+  /* Accent — MANN brand: Orange for light */
+  --accent:          #D9770B;
+  --accent-2:        #B45309;
+  --accent-glow:     rgba(217, 119, 11, 0.18);
+
+  /* Status */
+  --danger:          #DC2626;
+  --danger-bg:       rgba(220, 38, 38, 0.07);
+  --success:         #16A34A;
+
+  /* Chat */
+  --msg-ai-bg:       #FFFFFF;
+  --msg-ai-border:   #D9CFC4;
+  --msg-user-bg:     #D9770B;
+  --msg-user-color:  #FFFFFF;
+
+  /* Input / send */
+  --send-bg:         #EDE4D8;
+  --send-color:      #9C8A78;
+
+  color-scheme: light;
+}
+
+/* ══════════════════════════════════════
+   BASE
+   ══════════════════════════════════════ */
+:root {
+  --sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-2);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background 0.25s ease, color 0.25s ease;
+}
+
+body { margin: 0; }
+
+#root {
+  width: 100%;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+
+h1, h2, h3, h4 {
+  margin: 0;
+  color: var(--text-h);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+p       { margin: 0; }
+button  { font-family: var(--sans); cursor: pointer; }
+a       { color: inherit; text-decoration: none; }

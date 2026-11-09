@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "f3fe9847-7324-4c6a-99ba-20deadaf41c6",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/home/harshitj183/coding/Mann/.archify/architecture-justpostgres-20261109-2328/candidate.json",
+  "output": "/home/harshitj183/coding/Mann/.archify/architecture-justpostgres-20261109-2328/justpostgres-architecture.html",
+  "specification": {
+    "sha256": "7d35f098573d5e00ecbbae640fbd2c1a23c859c421afa1dbfbfd6731ed2543a6",
+    "bytes": 5838
+  },
+  "artifact": {
+    "sha256": "a1dbd1e47fdb3ea359385a7064e29c6039a187938db433ed18c161c29cc16fa1",
+    "bytes": 765229
+  }
+}

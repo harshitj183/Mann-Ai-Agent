@@ -1,0 +1,39 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build and test output
+dist/
+**/dist/
+coverage/
+**/coverage/
+*.tsbuildinfo
+
+# Logs and local runtime data
+*.log
+logs/
+**/logs/
+*.pid
+
+# IDE and OS files
+.idea/
+.DS_Store
+*.swp
+*.swo
+
+# Docker local state
+**/docker-data/
+**/postgres-data/
+
+# Local Archify receipts and temporary diagnostics
+.archify/*/*.finalize.json
+.archify/*/*.finalize-summary.json
+.archify/*/*.browser-check.json
