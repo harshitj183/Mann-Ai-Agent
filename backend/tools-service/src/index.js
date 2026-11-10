@@ -5,7 +5,7 @@ const app = express()
 app.use(cors())
 app.use(express.json())
 
-const PORT = 3006
+const PORT = process.env.PORT || 3005
 
 // Registry of available tools/MCP integrations
 const TOOLS = [

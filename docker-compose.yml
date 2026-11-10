@@ -1,0 +1,94 @@
+services:
+  auth-service:
+    build:
+      context: ./backend/auth-service
+    container_name: mann-auth-service
+    env_file:
+      - .env
+    environment:
+      PORT: ${PORT_AUTH}
+    ports:
+      - "${PORT_AUTH}:${PORT_AUTH}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+  chat-service:
+    build:
+      context: ./backend/chat-service
+    container_name: mann-chat-service
+    env_file:
+      - .env
+    environment:
+      PORT: ${PORT_CHAT}
+    ports:
+      - "${PORT_CHAT}:${PORT_CHAT}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+  memory-service:
+    build:
+      context: ./backend/memory-service
+    container_name: mann-memory-service
+    env_file:
+      - .env
+    environment:
+      PORT: ${PORT_MEMORY}
+    ports:
+      - "${PORT_MEMORY}:${PORT_MEMORY}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+  agent-service:
+    build:
+      context: ./backend/agent-service
+    container_name: mann-agent-service
+    env_file:
+      - .env
+    environment:
+      PORT: ${PORT_AGENT}
+    ports:
+      - "${PORT_AGENT}:${PORT_AGENT}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+  tools-service:
+    build:
+      context: ./backend/tools-service
+    container_name: mann-tools-service
+    env_file:
+      - .env
+    environment:
+      PORT: ${PORT_TOOLS}
+    ports:
+      - "${PORT_TOOLS}:${PORT_TOOLS}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+  api-gateway:
+    build:
+      context: ./backend/api-gateway
+    container_name: mann-api-gateway
+    env_file:
+      - .env
+    environment:
+      PORT: ${PORT_GATEWAY}
+      AUTH_SERVICE_URL: http://auth-service:${PORT_AUTH}
+      CHAT_SERVICE_URL: http://chat-service:${PORT_CHAT}
+      MEMORY_SERVICE_URL: http://memory-service:${PORT_MEMORY}
+      AGENT_SERVICE_URL: http://agent-service:${PORT_AGENT}
+      TOOLS_SERVICE_URL: http://tools-service:${PORT_TOOLS}
+    depends_on:
+      - auth-service
+      - chat-service
+      - memory-service
+      - agent-service
+      - tools-service
+    ports:
+      - "${PORT_GATEWAY}:${PORT_GATEWAY}"
+  frontend:
+    build:
+      context: ./frontend
+    container_name: mann-frontend
+    env_file:
+      - .env
+    environment:
+      PORT: ${PORT_FRONTEND}
+    depends_on:
+      - api-gateway
+    ports:
+      - "${PORT_FRONTEND}:${PORT_FRONTEND}"
