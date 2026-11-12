@@ -64,8 +64,9 @@ docker compose -f justpostgres/docker-compose.yml up -d
 docker compose -f docker-compose.yml up -d --build
 ```
 
-The first command starts JustPostgres. The second builds and starts all Mann
-application containers.
+The first command starts JustPostgres. The second builds and starts the
+database migration container, then starts the Mann application containers only
+after migration succeeds.
 
 Check status:
 
@@ -73,6 +74,19 @@ Check status:
 docker compose -f docker-compose.yml ps
 docker compose -f justpostgres/docker-compose.yml ps
 ```
+
+## User schema
+
+The auth service stores users with these fields:
+
+```text
+id, name, email, password_hash, avatar, created_at, updated_at
+```
+
+`avatar` is optional. Database access uses the shared `backend/database` Drizzle package. Run the
+dedicated migration container before the application services; the initial
+migration is a non-destructive baseline for the existing PostgreSQL tables.
+Future schema changes must be added as reviewed Drizzle migrations.
 
 Open:
 
@@ -121,3 +135,9 @@ The current Docker setup is for local development. It uses one basic
 Dockerfile per application service and a root Compose file. It does not yet
 provide a production image strategy, reverse proxy, TLS termination, or
 orchestration platform deployment.
+
+The Agent Service now exposes a simple fixed run flow through
+`POST /api/agents/runs`: the authenticated request is sent to Groq and the
+completed or failed result is stored in PostgreSQL. Configure `GROQ_API_KEY`
+in the local `.env`; `GROQ_MODEL` is optional and defaults to
+`openai/gpt-oss-20b`.

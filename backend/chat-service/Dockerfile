@@ -1,12 +1,13 @@
 FROM node:20-alpine
 
-WORKDIR /app
+WORKDIR /app/backend/chat-service
 
-COPY package*.json ./
+COPY backend/chat-service/package*.json ./
+COPY backend/database /app/backend/database
 
 RUN npm ci
 
-COPY src ./src
+COPY backend/chat-service/src ./src
 
 EXPOSE 3002
 

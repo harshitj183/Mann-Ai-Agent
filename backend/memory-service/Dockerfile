@@ -1,12 +1,13 @@
 FROM node:20-alpine
 
-WORKDIR /app
+WORKDIR /app/backend/memory-service
 
-COPY package*.json ./
+COPY backend/memory-service/package*.json ./
+COPY backend/database /app/backend/database
 
 RUN npm ci
 
-COPY src ./src
+COPY backend/memory-service/src ./src
 
 EXPOSE 3003
 

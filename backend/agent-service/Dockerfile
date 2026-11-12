@@ -1,12 +1,13 @@
 FROM node:20-alpine
 
-WORKDIR /app
+WORKDIR /app/backend/agent-service
 
-COPY package*.json ./
+COPY backend/agent-service/package*.json ./
+COPY backend/database /app/backend/database
 
 RUN npm ci
 
-COPY src ./src
+COPY backend/agent-service/src ./src
 
 EXPOSE 3004
 
