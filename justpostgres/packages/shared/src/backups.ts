@@ -18,7 +18,10 @@ export interface RecoveryWindow {
   latest: number | null;
   backupCount: number;
   empty: boolean;
+
 }
+
+
 
 export interface BackupSetInfo {
   label: string;

@@ -6,7 +6,7 @@ export async function forwardToService(baseUrl, path, method, body) {
       body: body ? JSON.stringify(body) : undefined,
     })
     const data = await res.json()
-    return { status: res.status, data }
+    return { status: res.status, data, headers: res.headers }
   } catch {
     return {
       status: 503,

@@ -31,4 +31,12 @@ router.patch('/:agentId/status', async (req, res) => {
   res.status(status).json(data)
 })
 
+// POST /api/agents/runs
+router.post('/runs', async (req, res) => {
+  const { status, data } = await forwardToService(
+    SERVICES.agent, `/runs/${req.user.id}`, 'POST', req.body
+  )
+  res.status(status).json(data)
+})
+
 export default router

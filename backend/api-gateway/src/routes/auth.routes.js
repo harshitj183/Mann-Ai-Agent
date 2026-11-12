@@ -5,15 +5,28 @@ import { SERVICES } from '../config/services.js'
 
 const router = Router()
 
+export function copyAuthCookie(serviceResponse, clientResponse) {
+  const cookie = serviceResponse.headers?.get('set-cookie')
+  if (cookie) clientResponse.setHeader('Set-Cookie', cookie)
+}
+
 // POST /api/auth/signup
 router.post('/signup', async (req, res) => {
-  const { status, data } = await forwardToService(SERVICES.auth, '/signup', 'POST', req.body)
+  const { status, data, headers } = await forwardToService(SERVICES.auth, '/signup', 'POST', req.body)
+  copyAuthCookie({ headers }, res)
   res.status(status).json(data)
 })
 
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
-  const { status, data } = await forwardToService(SERVICES.auth, '/login', 'POST', req.body)
+  const { status, data, headers } = await forwardToService(SERVICES.auth, '/login', 'POST', req.body)
+  copyAuthCookie({ headers }, res)
+  res.status(status).json(data)
+})
+
+router.post('/logout', async (req, res) => {
+  const { status, data, headers } = await forwardToService(SERVICES.auth, '/logout', 'POST', null)
+  copyAuthCookie({ headers }, res)
   res.status(status).json(data)
 })
 

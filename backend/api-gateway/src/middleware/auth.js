@@ -1,14 +1,15 @@
 import jwt from 'jsonwebtoken'
 
-const JWT_SECRET = 'my-secret-key-change-in-production'
+const JWT_SECRET = process.env.JWT_SECRET || 'my-secret-key-change-in-production'
 
 export function authenticateToken(req, res, next) {
   const authHeader = req.headers.authorization
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  const cookieToken = req.cookies?.mann_auth
+  const token = cookieToken || (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null)
+  if (!token) {
     return res.status(401).json({ message: 'No token provided' })
   }
 
-  const token = authHeader.split(' ')[1]
   try {
     req.user = jwt.verify(token, JWT_SECRET)
     next()

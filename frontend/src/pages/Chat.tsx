@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 import MannLogo from '../components/MannLogo'
@@ -66,25 +68,23 @@ const INITIAL: Conversation[] = [
   },
 ]
 
-const AI_REPLIES = [
-  "That's a great question. Let me think through this step by step and give you a thorough answer.",
-  "Based on your input, here's what I'd recommend. There are a few key things to consider here.",
-  "Interesting! Here's my analysis. The core idea is straightforward once you break it down.",
-  "I can definitely help with that. Let me walk you through it clearly.",
-  "Good point. The short answer is: it depends on the context. Here's why...",
-]
-
 // How many px from each edge triggers auto open/close
 const EDGE_THRESHOLD = 40
+const API_BASE = 'http://localhost:5000/api'
+
+function formatAgentMarkdown(content: string) {
+  return content.replace(/\\n/g, '\n')
+}
 
 export default function Chat() {
   const { user, logout } = useAuth()
-  const { mode, resolved, setMode } = useTheme()
+  const { mode, setMode } = useTheme()
   const navigate = useNavigate()
   const [convos, setConvos] = useState(INITIAL)
   const [activeId, setActiveId] = useState<number | null>(1)
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
+  const [requestError, setRequestError] = useState('')
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
 
@@ -137,13 +137,15 @@ export default function Chat() {
   const manualCloseRight = useCallback(() => { rightLocked.current = false; setRightOpen(false) }, [])
 
   // ── Chat logic ──
-  const send = () => {
+  const send = async () => {
     if (!input.trim() || isTyping) return
+    const request = input.trim()
+    setRequestError('')
     let targetId = activeId
     if (!targetId) {
       const id = Date.now()
       const newConvo: Conversation = {
-        id, title: input.trim().slice(0, 40),
+        id, title: request.slice(0, 40),
         updatedAt: 'Just now',
         messages: [{ id: 1, role: 'ai', content: 'Hello! How can I help you?' }],
       }
@@ -151,20 +153,42 @@ export default function Chat() {
       setActiveId(id)
       targetId = id
     }
-    const userMsg: Message = { id: Date.now(), role: 'user', content: input.trim() }
+    const userMsg: Message = { id: Date.now(), role: 'user', content: request }
     setConvos(p => p.map(c =>
       c.id === targetId ? { ...c, messages: [...c.messages, userMsg], updatedAt: 'Just now' } : c
     ))
     setInput('')
     setIsTyping(true)
-    setTimeout(() => {
-      const reply = AI_REPLIES[Math.floor(Math.random() * AI_REPLIES.length)]
-      const aiMsg: Message = { id: Date.now() + 1, role: 'ai', content: reply }
+
+    try {
+      const response = await fetch(`${API_BASE}/agents/runs`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ request }),
+      })
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Agent request failed')
+      }
+
+      const output = data.run?.output
+      if (typeof output !== 'string' || !output.trim()) {
+        throw new Error('Agent returned an empty response')
+      }
+
+      const aiMsg: Message = { id: Date.now() + 1, role: 'ai', content: output }
       setConvos(p => p.map(c =>
         c.id === targetId ? { ...c, messages: [...c.messages, aiMsg] } : c
       ))
+    } catch (error) {
+      setRequestError(error instanceof Error ? error.message : 'Agent request failed')
+    } finally {
       setIsTyping(false)
-    }, 900 + Math.random() * 700)
+    }
   }
 
   const onKey = (e: React.KeyboardEvent) => {
@@ -264,7 +288,15 @@ export default function Chat() {
               {active.messages.map(msg => (
                 <div key={msg.id} className={`gpt-msg ${msg.role}`}>
                   {msg.role === 'ai' && <div className="gpt-msg-avatar ai">M</div>}
-                  <div className={`gpt-msg-content ${msg.role}`}>{msg.content}</div>
+                  <div className={`gpt-msg-content ${msg.role}`}>
+                    {msg.role === 'ai' ? (
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {formatAgentMarkdown(msg.content)}
+                      </ReactMarkdown>
+                    ) : (
+                      msg.content
+                    )}
+                  </div>
                   {msg.role === 'user' && (
                     <div className="gpt-msg-avatar user">{user?.name?.charAt(0).toUpperCase()}</div>
                   )}
@@ -282,6 +314,7 @@ export default function Chat() {
             </div>
 
             <div className="gpt-input-wrap">
+              {requestError && <p className="gpt-error">{requestError}</p>}
               <div className="gpt-input-box">
                 <button className="gpt-input-icon-btn" title="Attach"><IconAttach /></button>
                 <textarea rows={1} value={input}
@@ -307,6 +340,7 @@ export default function Chat() {
             <h2>How can I help you today?</h2>
             <p>Start a new conversation or pick one from the history.</p>
             <div className="gpt-input-wrap" style={{ width: '100%', maxWidth: 640 }}>
+              {requestError && <p className="gpt-error">{requestError}</p>}
               <div className="gpt-input-box">
                 <button className="gpt-input-icon-btn"><IconAttach /></button>
                 <textarea rows={1} value={input}

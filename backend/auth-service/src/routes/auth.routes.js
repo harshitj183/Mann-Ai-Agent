@@ -6,6 +6,14 @@ import { JWT_SECRET, JWT_EXPIRES_IN } from '../config/constants.js'
 import { verifyToken } from '../middleware/auth.js'
 
 const router = Router()
+const AUTH_COOKIE = 'mann_auth'
+const AUTH_COOKIE_OPTIONS = {
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: process.env.NODE_ENV === 'production',
+  maxAge: 24 * 60 * 60 * 1000,
+  path: '/',
+}
 
 // POST /signup
 router.post('/signup', async (req, res) => {
@@ -40,9 +48,9 @@ router.post('/signup', async (req, res) => {
     return { user: created, token }
   })
 
+  res.cookie(AUTH_COOKIE, token, AUTH_COOKIE_OPTIONS)
   res.status(201).json({
     message: 'User created successfully',
-    token,
     user,
   })
 })
@@ -71,11 +79,16 @@ router.post('/login', async (req, res) => {
     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
   })
 
+  res.cookie(AUTH_COOKIE, token, AUTH_COOKIE_OPTIONS)
   res.json({
     message: 'Login successful',
-    token,
     user: { id: user.id, name: user.name, email: user.email, avatar: user.avatar },
   })
+})
+
+router.post('/logout', (req, res) => {
+  res.clearCookie(AUTH_COOKIE, { ...AUTH_COOKIE_OPTIONS, maxAge: undefined })
+  res.json({ message: 'Logout successful' })
 })
 
 // GET /verify  (called internally by api-gateway)

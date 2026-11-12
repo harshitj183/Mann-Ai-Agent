@@ -1,8 +1,10 @@
 import { createContext, useContext, useState, type ReactNode } from 'react'
 
 interface User {
+  id: number
   name: string
   email: string
+  avatar: string | null
 }
 
 interface AuthContextType {
@@ -27,13 +29,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ email, password }),
       })
       const data = await res.json()
 
       if (!res.ok) return data.message || 'Login failed'
 
-      localStorage.setItem('token', data.token)
+      localStorage.removeItem('token')
       localStorage.setItem('currentUser', JSON.stringify(data.user))
       setUser(data.user)
       return null
@@ -47,13 +50,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await fetch(`${API_BASE}/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ name, email, password }),
       })
       const data = await res.json()
 
       if (!res.ok) return data.message || 'Signup failed'
 
-      localStorage.setItem('token', data.token)
+      localStorage.removeItem('token')
       localStorage.setItem('currentUser', JSON.stringify(data.user))
       setUser(data.user)
       return null
@@ -63,6 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const logout = () => {
+    fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' }).catch(() => {})
     localStorage.removeItem('token')
     localStorage.removeItem('currentUser')
     setUser(null)

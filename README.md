@@ -48,6 +48,11 @@ cp .env.example .env
 Set real values for `DATABASE_URL`, `JWT_SECRET`, and `JP_MASTER_KEY`.
 Never commit `.env`.
 
+Authentication uses an HttpOnly `mann_auth` cookie. The browser does not store
+the JWT in `localStorage`; frontend requests include credentials so the cookie
+is sent automatically. The current user profile is kept in `localStorage` for
+UI hydration only.
+
 For Docker, the database host in `DATABASE_URL` must be reachable from a
 container, for example:
 
