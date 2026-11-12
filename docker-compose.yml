@@ -1,7 +1,18 @@
 services:
+  database-migrate:
+    build:
+      context: .
+      dockerfile: backend/database/Dockerfile
+    container_name: mann-database-migrate
+    env_file:
+      - .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: "no"
   auth-service:
     build:
-      context: ./backend/auth-service
+      context: .
+      dockerfile: backend/auth-service/Dockerfile
     container_name: mann-auth-service
     env_file:
       - .env
@@ -11,9 +22,13 @@ services:
       - "${PORT_AUTH}:${PORT_AUTH}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      database-migrate:
+        condition: service_completed_successfully
   chat-service:
     build:
-      context: ./backend/chat-service
+      context: .
+      dockerfile: backend/chat-service/Dockerfile
     container_name: mann-chat-service
     env_file:
       - .env
@@ -23,9 +38,13 @@ services:
       - "${PORT_CHAT}:${PORT_CHAT}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      database-migrate:
+        condition: service_completed_successfully
   memory-service:
     build:
-      context: ./backend/memory-service
+      context: .
+      dockerfile: backend/memory-service/Dockerfile
     container_name: mann-memory-service
     env_file:
       - .env
@@ -35,9 +54,13 @@ services:
       - "${PORT_MEMORY}:${PORT_MEMORY}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      database-migrate:
+        condition: service_completed_successfully
   agent-service:
     build:
-      context: ./backend/agent-service
+      context: .
+      dockerfile: backend/agent-service/Dockerfile
     container_name: mann-agent-service
     env_file:
       - .env
@@ -47,6 +70,9 @@ services:
       - "${PORT_AGENT}:${PORT_AGENT}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      database-migrate:
+        condition: service_completed_successfully
   tools-service:
     build:
       context: ./backend/tools-service

@@ -7,13 +7,34 @@ dotenv.config({ path: path.resolve(__dirname, '../../..', '.env') })
 
 import express from 'express'
 import cors from 'cors'
-import db from './db.js'
+import db, { agents, agentRuns, eq, and } from './db.js'
+import { createGroqClient } from './llm/groq-client.js'
+import { createAgentOrchestrator } from './orchestrator/agent-orchestrator.js'
 
 const app = express()
 app.use(cors())
 app.use(express.json())
 
 const PORT = process.env.PORT || 3004
+const groq = createGroqClient()
+const orchestrator = createAgentOrchestrator({
+  execute: async (request) => ({ output: await groq.complete(request) }),
+  saveRun: async ({ userId, request, status, output, error }) => {
+    const [run] = await db.insert(agentRuns).values({
+      userId, request, status, output, error,
+    }).returning({
+      id: agentRuns.id,
+      userId: agentRuns.userId,
+      request: agentRuns.request,
+      status: agentRuns.status,
+      output: agentRuns.output,
+      error: agentRuns.error,
+      createdAt: agentRuns.createdAt,
+      completedAt: agentRuns.completedAt,
+    })
+    return run
+  },
+})
 
 app.get('/health', (req, res) => {
   res.json({ service: 'agent-service', status: 'ok', db: 'postgres' })
@@ -21,23 +42,22 @@ app.get('/health', (req, res) => {
 
 // Get all agents for a user
 app.get('/agents/:userId', async (req, res) => {
-  const result = await db.query(
-    'SELECT * FROM agents WHERE user_id = $1',
-    [req.params.userId]
-  )
-  res.json({ agents: result.rows })
+  const rows = await db.select().from(agents).where(eq(agents.userId, Number(req.params.userId)))
+  res.json({ agents: rows })
 })
 
 // Create a new agent
 app.post('/agents/:userId', async (req, res) => {
   const { name, description, system_prompt } = req.body
   if (!name) return res.status(400).json({ message: 'name is required' })
-  const result = await db.query(
-    'INSERT INTO agents (user_id, name, description, system_prompt) VALUES ($1, $2, $3, $4) RETURNING id',
-    [req.params.userId, name, description ?? '', system_prompt ?? '']
-  )
+  const [agent] = await db.insert(agents).values({
+    userId: Number(req.params.userId),
+    name,
+    description: description ?? '',
+    systemPrompt: system_prompt ?? '',
+  }).returning({ id: agents.id })
   res.status(201).json({
-    id: result.rows[0].id,
+    id: agent.id,
     name,
     description,
     system_prompt,
@@ -51,11 +71,30 @@ app.patch('/agents/:userId/:agentId/status', async (req, res) => {
   if (!['idle', 'running', 'paused'].includes(status)) {
     return res.status(400).json({ message: 'Invalid status' })
   }
-  await db.query(
-    'UPDATE agents SET status = $1 WHERE id = $2 AND user_id = $3',
-    [status, req.params.agentId, req.params.userId]
-  )
+  await db.update(agents).set({ status }).where(and(
+    eq(agents.id, Number(req.params.agentId)),
+    eq(agents.userId, Number(req.params.userId)),
+  ))
   res.json({ message: 'Status updated', status })
+})
+
+app.post('/runs/:userId', async (req, res) => {
+  const userId = Number(req.params.userId)
+
+  try {
+    const run = await orchestrator.run({ userId, request: req.body.request })
+    res.status(201).json({ run })
+  } catch (error) {
+    if (error instanceof Error && (
+      error.message === 'request is required' ||
+      error.message.startsWith('userId')
+    )) {
+      return res.status(400).json({ message: error.message })
+    }
+
+    console.error('Agent run failed:', error)
+    res.status(500).json({ message: 'Agent run failed' })
+  }
 })
 
 app.listen(PORT, () => {

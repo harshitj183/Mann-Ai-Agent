@@ -7,7 +7,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../..', '.env') })
 
 import express from 'express'
 import cors from 'cors'
-import db from './db.js'
+import db, { asc, eq, messages } from './db.js'
 
 const app = express()
 app.use(cors())
@@ -22,11 +22,13 @@ app.get('/health', (req, res) => {
 // Get chat history for a user
 app.get('/messages/:userId', async (req, res) => {
   // 🔵 .rows — PostgreSQL result mein data .rows array mein hota hai
-  const result = await db.query(
-    'SELECT id, role, content, created_at FROM messages WHERE user_id = $1 ORDER BY created_at ASC',
-    [req.params.userId]
-  )
-  res.json({ messages: result.rows })
+  const rows = await db.select({
+    id: messages.id,
+    role: messages.role,
+    content: messages.content,
+    created_at: messages.createdAt,
+  }).from(messages).where(eq(messages.userId, Number(req.params.userId))).orderBy(asc(messages.createdAt))
+  res.json({ messages: rows })
 })
 
 // Save a new message
@@ -36,11 +38,10 @@ app.post('/messages/:userId', async (req, res) => {
     return res.status(400).json({ message: 'role and content are required' })
   }
   // 🟢 RETURNING id — naya row ka id wapas lene ka PostgreSQL tarika
-  const result = await db.query(
-    'INSERT INTO messages (user_id, role, content) VALUES ($1, $2, $3) RETURNING id',
-    [req.params.userId, role, content]
-  )
-  res.status(201).json({ id: result.rows[0].id, role, content })
+  const [message] = await db.insert(messages).values({
+    userId: Number(req.params.userId), role, content,
+  }).returning({ id: messages.id })
+  res.status(201).json({ id: message.id, role, content })
 })
 
 app.listen(PORT, () => {

@@ -1,12 +1,13 @@
 FROM node:20-alpine
 
-WORKDIR /app
+WORKDIR /app/backend/auth-service
 
-COPY package*.json ./
+COPY backend/auth-service/package*.json ./
+COPY backend/database /app/backend/database
 
 RUN npm ci
 
-COPY src ./src
+COPY backend/auth-service/src ./src
 
 EXPOSE 3001
 

@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
-import db from '../db.js'
+import db, { eq, users, userSessions } from '../db.js'
 import { JWT_SECRET, JWT_EXPIRES_IN } from '../config/constants.js'
 import { verifyToken } from '../middleware/auth.js'
 
@@ -9,7 +9,7 @@ const router = Router()
 
 // POST /signup
 router.post('/signup', async (req, res) => {
-  const { name, email, password } = req.body
+  const { name, email, password, avatar = null } = req.body
 
   if (!name || !email || !password)
     return res.status(400).json({ message: 'All fields are required' })
@@ -18,31 +18,32 @@ router.post('/signup', async (req, res) => {
     return res.status(400).json({ message: 'Password must be at least 6 characters' })
 
   // 🔵 $1 placeholder — PostgreSQL style (SQLite mein ? tha)
-  const existing = await db.query('SELECT id FROM users WHERE email = $1', [email])
-  if (existing.rows.length > 0)
+  const existing = await db.select({ id: users.id }).from(users).where(eq(users.email, email))
+  if (existing.length > 0)
     return res.status(409).json({ message: 'User already exists with this email' })
 
   const hashed = await bcrypt.hash(password, 10)
 
   // 🟢 RETURNING id — PostgreSQL mein lastInsertRowid nahi hota, RETURNING use karo
-  const result = await db.query(
-    'INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id',
-    [name, email, hashed]
-  )
-  const userId = result.rows[0].id
-
-  const token = jwt.sign({ id: userId, email, name }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN })
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-
-  await db.query(
-    'INSERT INTO user_sessions (user_id, token, expires_at) VALUES ($1, $2, $3)',
-    [userId, token, expiresAt]
-  )
+  const { user, token } = await db.transaction(async (tx) => {
+    const [created] = await tx.insert(users).values({
+      name, email, passwordHash: hashed, avatar,
+    }).returning({
+      id: users.id, name: users.name, email: users.email, avatar: users.avatar,
+    })
+    const token = jwt.sign({ id: created.id, email: created.email, name: created.name }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN })
+    await tx.insert(userSessions).values({
+      userId: created.id,
+      token,
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    })
+    return { user: created, token }
+  })
 
   res.status(201).json({
     message: 'User created successfully',
     token,
-    user: { id: userId, name, email },
+    user,
   })
 })
 
@@ -53,11 +54,10 @@ router.post('/login', async (req, res) => {
   if (!email || !password)
     return res.status(400).json({ message: 'All fields are required' })
 
-  const result = await db.query('SELECT * FROM users WHERE email = $1', [email])
-  const user = result.rows[0]
+  const [user] = await db.select().from(users).where(eq(users.email, email))
   if (!user) return res.status(401).json({ message: 'Invalid email or password' })
 
-  const isMatch = await bcrypt.compare(password, user.password)
+  const isMatch = await bcrypt.compare(password, user.passwordHash)
   if (!isMatch) return res.status(401).json({ message: 'Invalid email or password' })
 
   const token = jwt.sign(
@@ -65,17 +65,16 @@ router.post('/login', async (req, res) => {
     JWT_SECRET,
     { expiresIn: JWT_EXPIRES_IN }
   )
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-
-  await db.query(
-    'INSERT INTO user_sessions (user_id, token, expires_at) VALUES ($1, $2, $3)',
-    [user.id, token, expiresAt]
-  )
+  await db.insert(userSessions).values({
+    userId: user.id,
+    token,
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  })
 
   res.json({
     message: 'Login successful',
     token,
-    user: { id: user.id, name: user.name, email: user.email },
+    user: { id: user.id, name: user.name, email: user.email, avatar: user.avatar },
   })
 })
 
