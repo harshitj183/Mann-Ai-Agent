@@ -5,12 +5,17 @@
     "scripts": {
         "start": "node src/index.js",
         "dev": "node --watch src/index.js",
-        "test": "node --test"
+        "test": "node --test src/**/*.test.js"
     },
     "dependencies": {
+        "@langchain/core": "^1.4.0",
+        "@langchain/groq": "^1.3.1",
+        "@langchain/langgraph": "^1.7.3",
+        "@mann/database": "file:../database",
+        "@tavily/core": "^1.0.0",
         "cors": "^2.8.5",
         "dotenv": "16.4.7",
         "express": "^4.21.0",
-        "@mann/database": "file:../database"
+        "zod": "^4.6.7"
     }
 }

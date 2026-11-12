@@ -143,6 +143,18 @@ orchestration platform deployment.
 
 The Agent Service now exposes a simple fixed run flow through
 `POST /api/agents/runs`: the authenticated request is sent to Groq and the
-completed or failed result is stored in PostgreSQL. Configure `GROQ_API_KEY`
-in the local `.env`; `GROQ_MODEL` is optional and defaults to
-`openai/gpt-oss-20b`.
+completed or failed result is stored in PostgreSQL. The run now uses a small
+LangGraph workflow:
+
+```text
+Planner (LangChain + Groq)
+  -> search decision
+  -> Tavily search when current information is needed
+  -> final response (LangChain + Groq)
+  -> Drizzle agent_runs persistence
+```
+
+Configure `GROQ_API_KEY` and `TAVILY_API_KEY` in the local `.env`.
+`GROQ_MODEL` is optional and defaults to `openai/gpt-oss-20b`;
+`TAVILY_MAX_RESULTS` defaults to `5`. Casual prompts such as
+`hi how are you` skip web search.

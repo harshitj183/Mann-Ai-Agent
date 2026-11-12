@@ -8,43 +8,48 @@ dotenv.config({ path: path.resolve(__dirname, '../../..', '.env') })
 import express from 'express'
 import cors from 'cors'
 import db, { agents, agentRuns, eq, and } from './db.js'
-import { createGroqClient } from './llm/groq-client.js'
-import { createAgentOrchestrator } from './orchestrator/agent-orchestrator.js'
+import { createAgentGraph } from './graph/agent-graph.js'
 
 const app = express()
 app.use(cors())
 app.use(express.json())
 
 const PORT = process.env.PORT || 3004
-const groq = createGroqClient()
-const orchestrator = createAgentOrchestrator({
-  execute: async (request) => ({ output: await groq.complete(request) }),
-  saveRun: async ({ userId, request, status, output, error }) => {
-    const [run] = await db.insert(agentRuns).values({
-      userId, request, status, output, error,
-    }).returning({
-      id: agentRuns.id,
-      userId: agentRuns.userId,
-      request: agentRuns.request,
-      status: agentRuns.status,
-      output: agentRuns.output,
-      error: agentRuns.error,
-      createdAt: agentRuns.createdAt,
-      completedAt: agentRuns.completedAt,
-    })
-    return run
-  },
-})
+const graph = createAgentGraph()
+
+async function saveRun({ userId, request, status, output, error }) {
+  const [run] = await db.insert(agentRuns).values({
+    userId, request, status, output, error,
+  }).returning({
+    id: agentRuns.id,
+    userId: agentRuns.userId,
+    request: agentRuns.request,
+    status: agentRuns.status,
+    output: agentRuns.output,
+    error: agentRuns.error,
+    createdAt: agentRuns.createdAt,
+    completedAt: agentRuns.completedAt,
+  })
+  return run
+}
+
+
 
 app.get('/health', (req, res) => {
   res.json({ service: 'agent-service', status: 'ok', db: 'postgres' })
 })
+
+
+
 
 // Get all agents for a user
 app.get('/agents/:userId', async (req, res) => {
   const rows = await db.select().from(agents).where(eq(agents.userId, Number(req.params.userId)))
   res.json({ agents: rows })
 })
+
+
+
 
 // Create a new agent
 app.post('/agents/:userId', async (req, res) => {
@@ -65,6 +70,9 @@ app.post('/agents/:userId', async (req, res) => {
   })
 })
 
+
+
+
 // Update agent status
 app.patch('/agents/:userId/:agentId/status', async (req, res) => {
   const { status } = req.body
@@ -78,21 +86,39 @@ app.patch('/agents/:userId/:agentId/status', async (req, res) => {
   res.json({ message: 'Status updated', status })
 })
 
+
+
+
 app.post('/runs/:userId', async (req, res) => {
   const userId = Number(req.params.userId)
+  const request = typeof req.body.request === 'string' ? req.body.request.trim() : ''
+
+  if (!Number.isInteger(userId) || userId <= 0) {
+    return res.status(400).json({ message: 'userId must be a positive integer' })
+  }
+  if (!request) {
+    return res.status(400).json({ message: 'request is required' })
+  }
 
   try {
-    const run = await orchestrator.run({ userId, request: req.body.request })
-    res.status(201).json({ run })
+    const result = await graph.invoke({ userInput: request })
+    const run = await saveRun({
+      userId,
+      request,
+      status: 'completed',
+      output: result.finalResponse,
+      error: null,
+    })
+    res.status(201).json({ run, sources: result.sources })
   } catch (error) {
-    if (error instanceof Error && (
-      error.message === 'request is required' ||
-      error.message.startsWith('userId')
-    )) {
-      return res.status(400).json({ message: error.message })
-    }
-
     console.error('Agent run failed:', error)
+    await saveRun({
+      userId,
+      request,
+      status: 'failed',
+      output: null,
+      error: error instanceof Error ? error.message : 'Agent execution failed',
+    })
     res.status(500).json({ message: 'Agent run failed' })
   }
 })

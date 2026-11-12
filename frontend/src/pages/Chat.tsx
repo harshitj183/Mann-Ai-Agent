@@ -10,6 +10,7 @@ interface Message {
   id: number
   role: 'user' | 'ai'
   content: string
+  sources?: { title: string; url: string }[]
 }
 
 interface Conversation {
@@ -180,7 +181,15 @@ export default function Chat() {
         throw new Error('Agent returned an empty response')
       }
 
-      const aiMsg: Message = { id: Date.now() + 1, role: 'ai', content: output }
+      const sources = Array.isArray(data.sources)
+        ? data.sources.filter((source: unknown): source is { title: string; url: string } =>
+          typeof source === 'object' &&
+          source !== null &&
+          typeof (source as { title?: unknown }).title === 'string' &&
+          typeof (source as { url?: unknown }).url === 'string'
+        )
+        : []
+      const aiMsg: Message = { id: Date.now() + 1, role: 'ai', content: output, sources }
       setConvos(p => p.map(c =>
         c.id === targetId ? { ...c, messages: [...c.messages, aiMsg] } : c
       ))
@@ -290,9 +299,25 @@ export default function Chat() {
                   {msg.role === 'ai' && <div className="gpt-msg-avatar ai">M</div>}
                   <div className={`gpt-msg-content ${msg.role}`}>
                     {msg.role === 'ai' ? (
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {formatAgentMarkdown(msg.content)}
-                      </ReactMarkdown>
+                      <>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {formatAgentMarkdown(msg.content)}
+                        </ReactMarkdown>
+                        {msg.sources?.length ? (
+                          <div className="gpt-sources">
+                            <strong>Sources</strong>
+                            <ul>
+                              {msg.sources.map(source => (
+                                <li key={source.url}>
+                                  <a href={source.url} target="_blank" rel="noreferrer">
+                                    {source.title || source.url}
+                                  </a>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                      </>
                     ) : (
                       msg.content
                     )}
