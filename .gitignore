@@ -37,3 +37,6 @@ logs/
 .archify/
 docs/
 project/
+
+# Git worktrees
+.worktrees/
