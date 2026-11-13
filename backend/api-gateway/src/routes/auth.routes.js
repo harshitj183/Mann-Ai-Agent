@@ -6,8 +6,18 @@ import { SERVICES } from '../config/services.js'
 const router = Router()
 
 export function copyAuthCookie(serviceResponse, clientResponse) {
-  const cookie = serviceResponse.headers?.get('set-cookie')
-  if (cookie) clientResponse.setHeader('Set-Cookie', cookie)
+  const headers = serviceResponse.headers
+  if (!headers) return
+
+  // getSetCookie() handles the multi-value Set-Cookie header correctly
+  // .get('set-cookie') mangles or drops it in Node.js fetch (undici)
+  const cookies = typeof headers.getSetCookie === 'function'
+    ? headers.getSetCookie()
+    : [headers.get('set-cookie')].filter(Boolean)
+
+  if (cookies.length > 0) {
+    clientResponse.setHeader('Set-Cookie', cookies)
+  }
 }
 
 // POST /api/auth/signup

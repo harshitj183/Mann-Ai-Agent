@@ -8,10 +8,12 @@ dotenv.config({ path: path.resolve(__dirname, '../../..', '.env') })
 import express from 'express'
 import cors from 'cors'
 import db, { asc, eq, messages } from './db.js'
+import { requestLogger } from './middleware/logger.js'
 
 const app = express()
 app.use(cors())
 app.use(express.json())
+app.use(requestLogger('chat-service'))
 
 const PORT = process.env.PORT || 3002
 

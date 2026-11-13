@@ -7,11 +7,13 @@ import chatRoutes   from './routes/chat.routes.js'
 import agentRoutes  from './routes/agent.routes.js'
 import memoryRoutes from './routes/memory.routes.js'
 import toolsRoutes  from './routes/tools.routes.js'
+import { requestLogger } from './middleware/logger.js'
 
 const app = express()
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:8000', credentials: true }))
 app.use(express.json())
 app.use(cookieParser())
+app.use(requestLogger('api-gateway'))
 
 const PORT = process.env.PORT || 5000
 

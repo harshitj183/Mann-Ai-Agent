@@ -9,10 +9,12 @@ import express from 'express'
 import cors from 'cors'
 import memoryRouter from './memory/router.js'
 import skillRouter from './skill/router.js'
+import { requestLogger } from './middleware/logger.js'
 
 const app = express()
 app.use(cors())
 app.use(express.json())
+app.use(requestLogger('memory-service'))
 
 const PORT = process.env.PORT || 3003
 

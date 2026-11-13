@@ -16,6 +16,10 @@ export const AgentState = Annotation.Root({
     reducer: (_, next) => next,
     default: () => [],
   }),
+  calcResult: Annotation({
+    reducer: (_, next) => next,
+    default: () => null,
+  }),
   finalResponse: Annotation({
     reducer: (_, next) => next,
     default: () => null,
@@ -28,6 +32,9 @@ export function validatePlan(plan) {
   }
   if (typeof plan.needsSearch !== 'boolean') {
     throw new Error('Planner needsSearch must be boolean')
+  }
+  if (typeof plan.needsCalc !== 'boolean') {
+    throw new Error('Planner needsCalc must be boolean')
   }
   if (!['conversation', 'answer'].includes(plan.responseType)) {
     throw new Error('Planner responseType is invalid')
@@ -45,5 +52,13 @@ export function validatePlan(plan) {
     throw new Error('Planner requires at least one search query')
   }
 
-  return { ...plan, searchQueries }
+  const calcExpression = typeof plan.calcExpression === 'string'
+    ? plan.calcExpression.trim()
+    : ''
+
+  if (plan.needsCalc && !calcExpression) {
+    throw new Error('Planner requires calcExpression when needsCalc is true')
+  }
+
+  return { ...plan, searchQueries, calcExpression }
 }

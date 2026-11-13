@@ -5,10 +5,22 @@ import path from 'path'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.resolve(__dirname, '../../..', '.env') })
 
+// ─── LangSmith tracing ────────────────────────────────────────────────────────
+// Add these to your .env to enable tracing in LangSmith dashboard:
+//
+//   LANGCHAIN_TRACING_V2=true
+//   LANGCHAIN_API_KEY=lsv2_pt_your_key_here
+//   LANGCHAIN_PROJECT=mann-agent        ← project name in LangSmith (optional)
+//
+// LangChain SDK picks these up automatically — every graph.invoke() call
+// will appear as a full trace (planner → search → final) in LangSmith.
+// No other code changes are needed.
+// ─────────────────────────────────────────────────────────────────────────────
+
 import express from 'express'
 import cors from 'cors'
 import db, { agents, agentRuns, eq, and } from './db.js'
-import { createAgentGraph } from './graph/agent-graph.js'
+import { createAgentGraph } from './graph/core/agent-graph.js'
 
 const app = express()
 app.use(cors())
@@ -100,6 +112,15 @@ app.post('/runs/:userId', async (req, res) => {
     return res.status(400).json({ message: 'request is required' })
   }
 
+  // ── console logs ────────────────────────────────────────────────────────────
+  console.log('\n╔═════════════════════════════════════════')
+  console.log('║ 📨 NEW RUN REQUEST')
+  console.log(`║ userId  : ${userId}`)
+  console.log(`║ input   : "${request}"`)
+  console.log('╚═════════════════════════════════════════')
+  const t0 = Date.now()
+  // ───────────────────────────────────────────────────────────────────────────
+
   try {
     const result = await graph.invoke({ userInput: request })
     const run = await saveRun({
@@ -109,9 +130,26 @@ app.post('/runs/:userId', async (req, res) => {
       output: result.finalResponse,
       error: null,
     })
+
+    // ── console logs ──────────────────────────────────────────────────────────
+    console.log('╔═════════════════════════════════════════')
+    console.log('║ ✅ RUN COMPLETED')
+    console.log(`║ runId   : ${run.id}`)
+    console.log(`║ sources : ${result.sources?.length ?? 0}`)
+    console.log(`║ total   : ${Date.now() - t0}ms`)
+    console.log('╚═════════════════════════════════════════\n')
+    // ─────────────────────────────────────────────────────────────────────────
+
     res.status(201).json({ run, sources: result.sources })
   } catch (error) {
-    console.error('Agent run failed:', error)
+    // ── console logs ──────────────────────────────────────────────────────────
+    console.error('╔═════════════════════════════════════════')
+    console.error('║ ❌ RUN FAILED')
+    console.error(`║ error  : ${error instanceof Error ? error.message : error}`)
+    console.error(`║ total  : ${Date.now() - t0}ms`)
+    console.error('╚═════════════════════════════════════════\n')
+    // ─────────────────────────────────────────────────────────────────────────
+
     await saveRun({
       userId,
       request,
