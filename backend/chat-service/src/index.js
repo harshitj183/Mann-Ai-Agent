@@ -33,19 +33,25 @@ app.get('/conversations/:userId', async (req, res) => {
 
 // POST /conversations/:userId  — create a new conversation
 app.post('/conversations/:userId', async (req, res) => {
-  const { title = 'New conversation' } = req.body
-  const [convo] = await db.insert(conversations).values({
-    userId: Number(req.params.userId),
-    title: title.slice(0, 100),
-  }).returning()
-  res.status(201).json({ conversation: convo })
+  try {
+    const { title = 'New conversation' } = req.body
+    const [convo] = await db.insert(conversations).values({
+      userId: Number(req.params.userId),
+      title: title.slice(0, 100),
+    }).returning()
+    res.status(201).json({ conversation: convo })
+  } catch (err) {
+    console.error('Failed to create conversation:', err)
+    res.status(500).json({ message: 'Failed to create conversation' })
+  }
 })
 
-// PATCH /conversations/:userId/:conversationId  — update title or updatedAt
+// PATCH /conversations/:userId/:conversationId  — update title / updatedAt / session_summary
 app.patch('/conversations/:userId/:conversationId', async (req, res) => {
-  const { title } = req.body
+  const { title, sessionSummary } = req.body
   const updates = { updatedAt: new Date() }
   if (title) updates.title = title.slice(0, 100)
+  if (sessionSummary !== undefined) updates.sessionSummary = sessionSummary
 
   await db.update(conversations)
     .set(updates)
@@ -54,6 +60,24 @@ app.patch('/conversations/:userId/:conversationId', async (req, res) => {
       eq(conversations.userId, Number(req.params.userId)),
     ))
   res.json({ message: 'Conversation updated' })
+})
+
+// GET /conversations/:userId/:conversationId/session  — get session summary for a conversation
+app.get('/conversations/:userId/:conversationId/session', async (req, res) => {
+  const [row] = await db.select({
+    sessionSummary: conversations.sessionSummary,
+  }).from(conversations)
+    .where(and(
+      eq(conversations.id, Number(req.params.conversationId)),
+      eq(conversations.userId, Number(req.params.userId)),
+    ))
+  if (!row) return res.status(404).json({ message: 'Conversation not found' })
+  try {
+    const summary = row.sessionSummary ? JSON.parse(row.sessionSummary) : null
+    res.json({ session: summary })
+  } catch {
+    res.json({ session: null })
+  }
 })
 
 // DELETE /conversations/:userId/:conversationId

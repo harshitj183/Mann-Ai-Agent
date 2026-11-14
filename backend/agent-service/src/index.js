@@ -80,28 +80,90 @@ async function saveMessage(userId, conversationId, role, content) {
   }
 }
 
-// Upsert long-term memory summary to memory-service
-async function upsertMemory(userId, key, value) {
+// Upsert a single memory row (fact or session)
+async function upsertMemory(userId, key, value, type) {
   try {
-    await fetch(`${MEMORY_SERVICE_URL}/memory/${userId}`, {
+    const res = await fetch(`${MEMORY_SERVICE_URL}/memory/${userId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key, value, type: 'context' }),
+      body: JSON.stringify({ key, value, type }),
     })
-  } catch {
-    // non-critical
+    if (!res.ok) {
+      const err = await res.text()
+      console.warn(`⚠️  upsertMemory failed key="${key}": ${res.status} ${err}`)
+    }
+  } catch (e) {
+    console.warn(`⚠️  upsertMemory fetch error: ${e?.message}`)
   }
 }
 
-// Fetch long-term memories for context injection
-async function fetchMemories(userId) {
+// Fetch long-term facts (type='fact') for injection into graph
+async function fetchLongTermMemories(userId) {
   try {
     const res = await fetch(`${MEMORY_SERVICE_URL}/memory/${userId}`)
     if (!res.ok) return []
     const data = await res.json()
-    return (data.memories || []).filter(m => m.type === 'context')
-  } catch {
+    return (data.memories || []).filter(m => m.type === 'fact')
+  } catch (e) {
+    console.warn(`⚠️  fetchLongTermMemories error: ${e?.message}`)
     return []
+  }
+}
+
+// Fetch session memory from conversations table (chat-service)
+async function fetchSessionMemory(userId, conversationId) {
+  if (!conversationId) return null
+  try {
+    const res = await fetch(`${CHAT_SERVICE_URL}/conversations/${userId}/${conversationId}/session`)
+    if (!res.ok) return null
+    const data = await res.json()
+    return data.session || null   // already parsed JSON object
+  } catch (e) {
+    console.warn(`⚠️  fetchSessionMemory error: ${e?.message}`)
+    return null
+  }
+}
+
+// Persist memory-agent output:
+//   facts   → memories table (type='fact') via memory-service
+//   session → conversations.session_summary column via chat-service
+async function persistMemoryWrites(userId, conversationId, memoryWrites) {
+  if (!memoryWrites) return
+
+  const { facts, session } = memoryWrites
+
+  // ── Write extracted facts to memories table ───────────────────────────────
+  const factResults = []
+  for (const { key, value } of (facts || [])) {
+    if (key && value) {
+      await upsertMemory(userId, key.trim(), value.trim(), 'fact')
+      factResults.push(key)
+    }
+  }
+  if (factResults.length > 0) {
+    console.log(`║ 💾 facts saved    : ${factResults.join(', ')}`)
+  }
+
+  // ── Write session summary to conversations table ──────────────────────────
+  if (session && conversationId) {
+    try {
+      const res = await fetch(
+        `${CHAT_SERVICE_URL}/conversations/${userId}/${conversationId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionSummary: JSON.stringify(session) }),
+        }
+      )
+      if (!res.ok) {
+        const err = await res.text()
+        console.warn(`⚠️  session summary save failed: ${res.status} ${err}`)
+      } else {
+        console.log(`║ 💾 session saved  : motive="${session.motive?.slice(0, 60)}"`)
+      }
+    } catch (e) {
+      console.warn(`⚠️  session summary fetch error: ${e?.message}`)
+    }
   }
 }
 
@@ -167,36 +229,37 @@ app.post('/runs/:userId', async (req, res) => {
   // 1. Fetch short-term history (last 10 messages)
   const chatHistory = await fetchChatHistory(userId, conversationId, 10)
 
-  // 2. Fetch long-term memories (context type)
-  const longTermMemories = await fetchMemories(userId)
+  // 2. Fetch long-term fact memories
+  const longTermMemories = await fetchLongTermMemories(userId)
+
+  // 3. Fetch session memory for this conversation
+  const sessionMemory = await fetchSessionMemory(userId, conversationId)
 
   // ── console logs ────────────────────────────────────────────────────────────
   console.log(`║ 📚 short-term history : ${chatHistory.length} messages`)
-  console.log(`║ 🧠 long-term memories : ${longTermMemories.length} items`)
+  console.log(`║ 🧠 long-term facts    : ${longTermMemories.length} items`)
+  console.log(`║ 📋 session memory     : ${sessionMemory ? 'loaded' : 'none'}`)
   // ───────────────────────────────────────────────────────────────────────────
 
   try {
-    // 3. Save user message
+    // 4. Save user message
     await saveMessage(userId, conversationId, 'user', request)
 
-    // 4. Run graph with history + memories as context
+    // 5. Run graph — memory-agent node runs inside graph after final response
     const result = await graph.invoke({
-      userInput:     request,
+      userInput:      request,
       chatHistory,
       longTermMemories,
+      sessionMemory,
     })
 
-    // 5. Save assistant response
+    // 6. Save assistant response
     await saveMessage(userId, conversationId, 'assistant', result.finalResponse)
 
-    // 6. Upsert long-term memory — summarize what was discussed
-    if (result.finalResponse) {
-      const summaryKey = `last_topic_${userId}`
-      const summaryVal = `User asked: "${request.slice(0, 200)}" | Answer summary: "${result.finalResponse.slice(0, 300)}"`
-      await upsertMemory(userId, summaryKey, summaryVal)
-    }
+    // 7. Persist memory-agent output (facts + session summary)
+    await persistMemoryWrites(userId, conversationId, result.memoryWrites)
 
-    // 7. Save run record
+    // 8. Save run record
     const run = await saveRun({
       userId,
       request,
@@ -224,6 +287,10 @@ app.post('/runs/:userId', async (req, res) => {
     console.error('╚═════════════════════════════════════════\n')
     // ─────────────────────────────────────────────────────────────────────────
 
+
+
+
+
     await saveRun({
       userId,
       request,
@@ -234,6 +301,10 @@ app.post('/runs/:userId', async (req, res) => {
     res.status(500).json({ message: 'Agent run failed' })
   }
 })
+
+
+
+
 
 app.listen(PORT, () => {
   console.log(`Agent service running on http://localhost:${PORT}`)

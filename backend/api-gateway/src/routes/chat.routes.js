@@ -34,6 +34,14 @@ router.patch('/conversations/:conversationId', async (req, res) => {
   res.status(status).json(data)
 })
 
+// GET /api/chat/conversations/:conversationId/session  — get session summary
+router.get('/conversations/:conversationId/session', async (req, res) => {
+  const { status, data } = await forwardToService(
+    SERVICES.chat, `/conversations/${req.user.id}/${req.params.conversationId}/session`, 'GET', null
+  )
+  res.status(status).json(data)
+})
+
 // DELETE /api/chat/conversations/:conversationId
 router.delete('/conversations/:conversationId', async (req, res) => {
   const { status, data } = await forwardToService(

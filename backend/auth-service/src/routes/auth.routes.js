@@ -9,7 +9,7 @@ const router = Router()
 const AUTH_COOKIE = 'mann_auth'
 const AUTH_COOKIE_OPTIONS = {
   httpOnly: true,
-  sameSite: 'lax',
+  sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
   secure: process.env.NODE_ENV === 'production',
   maxAge: 24 * 60 * 60 * 1000,
   path: '/',

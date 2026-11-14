@@ -12,6 +12,10 @@ export const AgentState = Annotation.Root({
     reducer: (_, next) => next,
     default: () => [],
   }),
+  sessionMemory: Annotation({
+    reducer: (_, next) => next,
+    default: () => null,
+  }),
   plan: Annotation({
     reducer: (_, next) => next,
     default: () => null,
@@ -29,6 +33,11 @@ export const AgentState = Annotation.Root({
     default: () => null,
   }),
   finalResponse: Annotation({
+    reducer: (_, next) => next,
+    default: () => null,
+  }),
+  // Output of memory-agent node — written to DB in index.js after graph.invoke()
+  memoryWrites: Annotation({
     reducer: (_, next) => next,
     default: () => null,
   }),

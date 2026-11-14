@@ -56,6 +56,9 @@ export default function Chat() {
   const hoverTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
+  // Detect mobile (<= 640px)
+  const isMobile = () => window.innerWidth <= 640
+
   const active = convos.find(c => c.id === activeId) ?? null
 
   // ── Load conversations from backend on mount ──
@@ -63,7 +66,10 @@ export default function Chat() {
     if (!user) return
     setLoadingConvos(true)
     fetch(`${API_BASE}/chat/conversations`, { credentials: 'include' })
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`${r.status}`)
+        return r.json()
+      })
       .then(data => {
         const loaded: Conversation[] = (data.conversations || []).map((c: { id: number; title: string; updated_at?: string; updatedAt?: string }) => ({
           id: c.id,
@@ -105,9 +111,10 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [active?.messages, isTyping])
 
-  // ── Cursor proximity: auto open/close when not manually locked ──
+  // ── Cursor proximity: auto open/close when not manually locked (desktop only) ──
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
+      if (isMobile()) return  // disabled on mobile, drawers use tap buttons
       if (hoverTimer.current) clearTimeout(hoverTimer.current)
       hoverTimer.current = setTimeout(() => {
         const w = window.innerWidth
@@ -133,6 +140,12 @@ export default function Chat() {
   const manualCloseLeft  = useCallback(() => { leftLocked.current = false; setLeftOpen(false) }, [])
   const manualCloseRight = useCallback(() => { rightLocked.current = false; setRightOpen(false) }, [])
 
+  // Mobile drawer helpers — close both when backdrop tapped
+  const closeDrawers = useCallback(() => {
+    leftLocked.current  = false; setLeftOpen(false)
+    rightLocked.current = false; setRightOpen(false)
+  }, [])
+
   // ── Chat send ──
   const send = async () => {
     if (!input.trim() || isTyping) return
@@ -150,6 +163,7 @@ export default function Chat() {
           body: JSON.stringify({ title: request.slice(0, 60) }),
         })
         const data = await res.json()
+        if (!res.ok) throw new Error(data.message || `Server error ${res.status}`)
         const newConvo: Conversation = {
           id: data.conversation.id,
           title: data.conversation.title,
@@ -159,8 +173,8 @@ export default function Chat() {
         setConvos(p => [newConvo, ...p])
         setActiveId(newConvo.id)
         targetId = newConvo.id
-      } catch {
-        setRequestError('Failed to create conversation')
+      } catch (err) {
+        setRequestError(err instanceof Error ? err.message : 'Failed to create conversation')
         return
       }
     }
@@ -226,7 +240,11 @@ export default function Chat() {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
 
-  const newChat = () => { setActiveId(null); setInput('') }
+  const newChat = () => {
+    setActiveId(null)
+    setInput('')
+    if (isMobile()) closeDrawers()
+  }
 
   const todayConvos = convos.filter(c => c.updatedAt === 'Today' || c.updatedAt === 'Just now')
   const olderConvos = convos.filter(c => c.updatedAt !== 'Today' && c.updatedAt !== 'Just now')
@@ -234,13 +252,18 @@ export default function Chat() {
   return (
     <div className="gpt-root">
 
+      {/* ── BACKDROP (mobile: tap to close drawer) ── */}
+      <div
+        className={`gpt-backdrop ${(leftOpen || rightOpen) && isMobile() ? 'visible' : ''}`}
+        onClick={closeDrawers}
+      />
+
       {/* ── LEFT SIDEBAR ── */}
       <aside className={`gpt-left ${leftOpen ? 'open' : 'closed'}`}>
         {leftOpen ? (
           <>
             <div className="gpt-left-top">
               <MannLogo size={28} showText={true} textColor="var(--sidebar-text-h)" />
-              {/* Manual close → unlocks auto mode */}
               <button className="gpt-icon-btn" onClick={manualCloseLeft} title="Close sidebar">
                 <IconSidebarClose />
               </button>
@@ -262,30 +285,12 @@ export default function Chat() {
             <div className="gpt-left-bottom">
               <button className="gpt-nav-item"><IconSettings /> Settings</button>
 
-              {/* Theme switcher */}
               <div className="theme-switcher">
-                <button
-                  className={`theme-btn ${mode === 'light' ? 'active' : ''}`}
-                  onClick={() => setMode('light')}
-                  title="Light"
-                >
-                  <IconSun />
-                </button>
-                <button
-                  className={`theme-btn ${mode === 'system' ? 'active' : ''}`}
-                  onClick={() => setMode('system')}
-                  title="System"
-                >
-                  <IconSystem />
-                </button>
-                <button
-                  className={`theme-btn ${mode === 'dark' ? 'active' : ''}`}
-                  onClick={() => setMode('dark')}
-                  title="Dark"
-                >
-                  <IconMoon />
-                </button>
+                <button className={`theme-btn ${mode === 'light' ? 'active' : ''}`} onClick={() => setMode('light')} title="Light"><IconSun /></button>
+                <button className={`theme-btn ${mode === 'system' ? 'active' : ''}`} onClick={() => setMode('system')} title="System"><IconSystem /></button>
+                <button className={`theme-btn ${mode === 'dark' ? 'active' : ''}`} onClick={() => setMode('dark')} title="Dark"><IconMoon /></button>
               </div>
+
               <div className="gpt-user-row">
                 <div className="gpt-user-avatar">{user?.name?.charAt(0).toUpperCase()}</div>
                 <div className="gpt-user-info">
@@ -300,7 +305,6 @@ export default function Chat() {
           </>
         ) : (
           <div className="gpt-left-collapsed">
-            {/* Manual open → locks to manual mode */}
             <button className="gpt-icon-btn" onClick={manualOpenLeft} title="Open sidebar">
               <IconSidebarOpen />
             </button>
@@ -313,6 +317,20 @@ export default function Chat() {
 
       {/* ── CENTER ── */}
       <main className="gpt-center">
+
+        {/* Mobile top bar */}
+        <div className="gpt-mobile-topbar">
+          <button className="gpt-icon-btn" onClick={manualOpenLeft} title="Menu">
+            <IconSidebarOpen />
+          </button>
+          <span className="gpt-mobile-topbar-title">
+            {active ? active.title : 'Mann AI'}
+          </span>
+          <button className="gpt-icon-btn" onClick={manualOpenRight} title="History">
+            <IconHistory />
+          </button>
+        </div>
+
         {active ? (
           <>
             <div className="gpt-messages">
@@ -364,14 +382,17 @@ export default function Chat() {
               {requestError && <p className="gpt-error">{requestError}</p>}
               <div className="gpt-input-box">
                 <button className="gpt-input-icon-btn" title="Attach"><IconAttach /></button>
-                <textarea rows={1} value={input}
+                <textarea
+                  rows={1}
+                  value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={onKey}
                   placeholder="Message Mann AI"
                 />
                 <button
                   className={`gpt-send-btn ${input.trim() && !isTyping ? 'on' : ''}`}
-                  onClick={send} disabled={!input.trim() || isTyping}
+                  onClick={send}
+                  disabled={!input.trim() || isTyping}
                 >
                   <IconSend />
                 </button>
@@ -390,14 +411,17 @@ export default function Chat() {
               {requestError && <p className="gpt-error">{requestError}</p>}
               <div className="gpt-input-box">
                 <button className="gpt-input-icon-btn"><IconAttach /></button>
-                <textarea rows={1} value={input}
+                <textarea
+                  rows={1}
+                  value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={onKey}
                   placeholder="Message Mann AI"
                 />
                 <button
                   className={`gpt-send-btn ${input.trim() ? 'on' : ''}`}
-                  onClick={send} disabled={!input.trim() || isTyping}
+                  onClick={send}
+                  disabled={!input.trim() || isTyping}
                 >
                   <IconSend />
                 </button>
@@ -413,7 +437,6 @@ export default function Chat() {
           <>
             <div className="gpt-right-top">
               <span className="gpt-right-title">History</span>
-              {/* Manual close → unlocks auto mode */}
               <button className="gpt-icon-btn" onClick={manualCloseRight} title="Close">
                 <IconClose />
               </button>
@@ -424,49 +447,51 @@ export default function Chat() {
                 <div style={{ padding: '12px', opacity: 0.5, fontSize: 13 }}>Loading...</div>
               ) : (
                 <>
-              {todayConvos.length > 0 && (
-                <>
-                  <div className="gpt-history-group-label">Today</div>
-                  {todayConvos.map(c => (
-                    <button key={c.id}
-                      className={`gpt-history-item ${c.id === activeId ? 'active' : ''}`}
-                      onClick={() => setActiveId(c.id)}
-                    >
-                      <div className="gpt-history-item-title">{c.title}</div>
-                    </button>
-                  ))}
-                </>
-              )}
-              {olderConvos.length > 0 && (
-                <>
-                  <div className="gpt-history-group-label">Earlier</div>
-                  {olderConvos.map(c => (
-                    <button key={c.id}
-                      className={`gpt-history-item ${c.id === activeId ? 'active' : ''}`}
-                      onClick={() => setActiveId(c.id)}
-                    >
-                      <div className="gpt-history-item-title">{c.title}</div>
-                      <div className="gpt-history-item-time">{c.updatedAt}</div>
-                    </button>
-                  ))}
-                </>
-              )}
-              {convos.length === 0 && (
-                <div style={{ padding: '12px', opacity: 0.5, fontSize: 13 }}>No conversations yet</div>
-              )}
+                  {todayConvos.length > 0 && (
+                    <>
+                      <div className="gpt-history-group-label">Today</div>
+                      {todayConvos.map(c => (
+                        <button key={c.id}
+                          className={`gpt-history-item ${c.id === activeId ? 'active' : ''}`}
+                          onClick={() => { setActiveId(c.id); if (isMobile()) closeDrawers() }}
+                        >
+                          <div className="gpt-history-item-title">{c.title}</div>
+                        </button>
+                      ))}
+                    </>
+                  )}
+                  {olderConvos.length > 0 && (
+                    <>
+                      <div className="gpt-history-group-label">Earlier</div>
+                      {olderConvos.map(c => (
+                        <button key={c.id}
+                          className={`gpt-history-item ${c.id === activeId ? 'active' : ''}`}
+                          onClick={() => { setActiveId(c.id); if (isMobile()) closeDrawers() }}
+                        >
+                          <div className="gpt-history-item-title">{c.title}</div>
+                          <div className="gpt-history-item-time">{c.updatedAt}</div>
+                        </button>
+                      ))}
+                    </>
+                  )}
+                  {convos.length === 0 && (
+                    <div style={{ padding: '12px', opacity: 0.5, fontSize: 13 }}>No conversations yet</div>
+                  )}
                 </>
               )}
             </div>
           </>
         ) : (
           <div className="gpt-right-collapsed">
-            {/* Manual open → locks to manual mode */}
             <button className="gpt-icon-btn" onClick={manualOpenRight} title="Open history">
               <IconHistory />
             </button>
           </div>
         )}
       </aside>
+
+      {/* ── MOBILE BOTTOM NAV ── */}
+      {/* removed */}
 
       <style>{`
         @keyframes bounce {

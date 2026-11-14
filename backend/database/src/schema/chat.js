@@ -4,6 +4,8 @@ export const conversations = pgTable('conversations', {
   id: serial('id').primaryKey(),
   userId: integer('user_id').notNull(),
   title: text('title').notNull().default('New conversation'),
+  // Session memory: JSON object { motive, topics, outcome } updated by memory-agent after each turn
+  sessionSummary: text('session_summary').default(null),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({

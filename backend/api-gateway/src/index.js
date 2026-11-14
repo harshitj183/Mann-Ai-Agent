@@ -10,7 +10,10 @@ import toolsRoutes  from './routes/tools.routes.js'
 import { requestLogger } from './middleware/logger.js'
 
 const app = express()
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:8000', credentials: true }))
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:8000',
+  credentials: true,
+}))
 app.use(express.json())
 app.use(cookieParser())
 app.use(requestLogger('api-gateway'))

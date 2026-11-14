@@ -22,7 +22,7 @@ export function createFinalResponseNode({
   if (!apiKey && !llm) throw new Error('GROQ_API_KEY is required')
   const modelClient = llm || new ChatGroq({ apiKey, model })
 
-  return async ({ userInput, plan, searchResults, calcResult, sources, chatHistory, longTermMemories }) => {
+  return async ({ userInput, plan, searchResults, calcResult, sources, chatHistory, longTermMemories, sessionMemory }) => {
     // ── console logs ──────────────────────────────────────────────────────────
     console.log('\n┌─────────────────────────────────────────')
     console.log('│ ✍️  FINAL RESPONSE  →  LLM call (Groq)')
@@ -53,22 +53,35 @@ export function createFinalResponseNode({
       ? (chatHistory || []).map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n')
       : ''
 
-    // Build long-term memory context
+    // Build long-term memory: fact-type key-value pairs about the user
     const memoryContext = (longTermMemories || []).length > 0
-      ? (longTermMemories || []).map(m => `- ${m.key}: ${m.value}`).join('\n')
+      ? longTermMemories.map(m => `${m.key}: ${m.value}`).join('\n')
+      : ''
+
+    // Build session memory context (what this conversation is about)
+    const sessionContext = sessionMemory
+      ? `Motive: ${sessionMemory.motive}\nTopics: ${(sessionMemory.topics || []).join(', ')}`
       : ''
 
     const humanParts = [
       `Question: ${userInput}`,
       `Response type: ${plan.responseType}`,
-      historyContext  ? `\nRecent conversation:\n${historyContext}`   : '',
-      memoryContext   ? `\nUser context (long-term memory):\n${memoryContext}` : '',
-      calcContext     ? `\nCalculation:\n${calcContext}`              : '',
-      searchContext   ? `\nSearch context:\n${searchContext}`         : '',
+      historyContext  ? `\nRecent conversation:\n${historyContext}`        : '',
+      memoryContext   ? `\nKnown facts about user:\n${memoryContext}`      : '',
+      sessionContext  ? `\nThis conversation context:\n${sessionContext}`  : '',
+      calcContext     ? `\nCalculation:\n${calcContext}`                   : '',
+      searchContext   ? `\nSearch context:\n${searchContext}`              : '',
     ].filter(Boolean).join('\n')
 
     const response = await modelClient.invoke([
-      ['system', 'Answer clearly in Markdown. Use conversation history and user memories to personalize the response. Use the calculator result as the precise answer for any arithmetic. For search-backed answers, use only the supplied results for factual claims. Do not invent citations.'],
+      ['system', `You are a helpful AI assistant. Answer clearly in Markdown.
+
+Guidelines:
+- If "Recent conversation" is provided, use it to maintain continuity — do not ask for info already given.
+- If "Known facts about user" is provided, personalize your response using those facts naturally.
+- If "This conversation context" is provided, stay aligned with the user's stated goal.
+- Use the calculator result as the precise answer for any arithmetic.
+- For search-backed answers, use only the supplied results for factual claims. Do not invent citations.`],
       ['human', humanParts],
     ])
 
