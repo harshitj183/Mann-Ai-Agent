@@ -5,7 +5,7 @@ WORKDIR /app/backend/agent-service
 COPY backend/agent-service/package*.json ./
 COPY backend/database /app/backend/database
 
-RUN npm ci
+RUN npm install --omit=dev
 
 COPY backend/agent-service/src ./src
 

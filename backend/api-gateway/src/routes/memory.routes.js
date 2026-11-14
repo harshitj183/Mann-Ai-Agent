@@ -7,33 +7,7 @@ const router = Router()
 
 router.use(authenticateToken)
 
-// ---- Memory ----
-
-// GET /api/memory
-router.get('/', async (req, res) => {
-  const { status, data } = await forwardToService(
-    SERVICES.memory, `/memory/${req.user.id}`, 'GET', null
-  )
-  res.status(status).json(data)
-})
-
-// POST /api/memory
-router.post('/', async (req, res) => {
-  const { status, data } = await forwardToService(
-    SERVICES.memory, `/memory/${req.user.id}`, 'POST', req.body
-  )
-  res.status(status).json(data)
-})
-
-// DELETE /api/memory/:key
-router.delete('/:key', async (req, res) => {
-  const { status, data } = await forwardToService(
-    SERVICES.memory, `/memory/${req.user.id}/${req.params.key}`, 'DELETE', null
-  )
-  res.status(status).json(data)
-})
-
-// ---- Skill (sub-service inside memory-service) ----
+// ── Skill routes FIRST (before /:key to prevent shadowing) ───────────────────
 
 // GET /api/memory/skill
 router.get('/skill', async (req, res) => {
@@ -63,6 +37,32 @@ router.put('/skill/:skillId', async (req, res) => {
 router.delete('/skill/:skillId', async (req, res) => {
   const { status, data } = await forwardToService(
     SERVICES.memory, `/skill/${req.user.id}/${req.params.skillId}`, 'DELETE', null
+  )
+  res.status(status).json(data)
+})
+
+// ── Memory routes (generic /:key AFTER specific /skill/* routes) ─────────────
+
+// GET /api/memory
+router.get('/', async (req, res) => {
+  const { status, data } = await forwardToService(
+    SERVICES.memory, `/memory/${req.user.id}`, 'GET', null
+  )
+  res.status(status).json(data)
+})
+
+// POST /api/memory
+router.post('/', async (req, res) => {
+  const { status, data } = await forwardToService(
+    SERVICES.memory, `/memory/${req.user.id}`, 'POST', req.body
+  )
+  res.status(status).json(data)
+})
+
+// DELETE /api/memory/:key  (must come after /skill/:skillId)
+router.delete('/:key', async (req, res) => {
+  const { status, data } = await forwardToService(
+    SERVICES.memory, `/memory/${req.user.id}/${req.params.key}`, 'DELETE', null
   )
   res.status(status).json(data)
 })

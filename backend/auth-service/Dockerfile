@@ -5,7 +5,7 @@ WORKDIR /app/backend/auth-service
 COPY backend/auth-service/package*.json ./
 COPY backend/database /app/backend/database
 
-RUN npm ci
+RUN npm install --omit=dev
 
 COPY backend/auth-service/src ./src
 

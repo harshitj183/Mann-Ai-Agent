@@ -29,8 +29,9 @@ app.use(express.json())
 app.use(requestLogger('agent-service'))
 
 const PORT = process.env.PORT || 3004
-const CHAT_SERVICE_URL  = process.env.CHAT_SERVICE_URL  || 'http://localhost:3002'
-const MEMORY_SERVICE_URL = process.env.MEMORY_SERVICE_URL || 'http://localhost:3003'
+const HOST = process.env.SERVICE_HOST || 'localhost'
+const CHAT_SERVICE_URL   = process.env.CHAT_SERVICE_URL   || `http://${HOST}:3002`
+const MEMORY_SERVICE_URL = process.env.MEMORY_SERVICE_URL || `http://${HOST}:3003`
 
 const graph = createAgentGraph()
 

@@ -5,7 +5,7 @@ WORKDIR /app/backend/chat-service
 COPY backend/chat-service/package*.json ./
 COPY backend/database /app/backend/database
 
-RUN npm ci
+RUN npm install --omit=dev
 
 COPY backend/chat-service/src ./src
 

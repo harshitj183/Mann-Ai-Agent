@@ -12,8 +12,9 @@ import { PORT } from './config/constants.js'
 import { requestLogger } from './middleware/logger.js'
 
 const app = express()
+const HOST = process.env.SERVICE_HOST || 'localhost'
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:8000',
+  origin: process.env.FRONTEND_URL || `http://${HOST}:8000`,
   credentials: true,
 }))
 app.use(express.json())

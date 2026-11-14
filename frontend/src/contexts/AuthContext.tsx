@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 
 interface User {
   id: number
@@ -16,13 +16,32 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-const API_BASE = 'http://localhost:5000/api'
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5000/api'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('currentUser')
-    return saved ? JSON.parse(saved) : null
+    try {
+      const saved = localStorage.getItem('currentUser')
+      return saved ? JSON.parse(saved) : null
+    } catch { return null }
   })
+
+  // Revalidate token with server on every page load
+  useEffect(() => {
+    fetch(`${API_BASE}/auth/me`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(data => {
+        if (data.user) {
+          localStorage.setItem('currentUser', JSON.stringify(data.user))
+          setUser(data.user)
+        }
+      })
+      .catch(() => {
+        // Token expired or invalid — clear local state
+        localStorage.removeItem('currentUser')
+        setUser(null)
+      })
+  }, [])
 
   const login = async (email: string, password: string): Promise<string | null> => {
     try {

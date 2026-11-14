@@ -5,7 +5,7 @@ WORKDIR /app/backend/memory-service
 COPY backend/memory-service/package*.json ./
 COPY backend/database /app/backend/database
 
-RUN npm ci
+RUN npm install --omit=dev
 
 COPY backend/memory-service/src ./src
 

@@ -22,7 +22,7 @@ interface Conversation {
 
 // How many px from each edge triggers auto open/close
 const EDGE_THRESHOLD = 40
-const API_BASE = 'http://localhost:5000/api'
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5000/api'
 
 function formatAgentMarkdown(content: string) {
   return content.replace(/\\n/g, '\n')

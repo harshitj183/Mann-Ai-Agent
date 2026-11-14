@@ -4,7 +4,8 @@ WORKDIR /app/backend/database
 
 COPY backend/database/package*.json ./
 
-RUN npm ci
+# drizzle-kit is a devDependency — needed for migrations
+RUN npm install
 
 COPY backend/database/drizzle.config.js ./
 COPY backend/database/src ./src

@@ -1,4 +1,6 @@
 services:
+
+  # ── Database migrations (runs once, all others wait for it) ──────────────────
   database-migrate:
     build:
       context: .
@@ -9,6 +11,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: "no"
+
+  # ── Auth Service ──────────────────────────────────────────────────────────────
   auth-service:
     build:
       context: .
@@ -18,6 +22,7 @@ services:
       - .env
     environment:
       PORT: ${PORT_AUTH}
+      NODE_ENV: ${NODE_ENV:-development}
     ports:
       - "${PORT_AUTH}:${PORT_AUTH}"
     extra_hosts:
@@ -25,6 +30,15 @@ services:
     depends_on:
       database-migrate:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:${PORT_AUTH}/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # ── Chat Service ──────────────────────────────────────────────────────────────
   chat-service:
     build:
       context: .
@@ -34,6 +48,7 @@ services:
       - .env
     environment:
       PORT: ${PORT_CHAT}
+      NODE_ENV: ${NODE_ENV:-development}
     ports:
       - "${PORT_CHAT}:${PORT_CHAT}"
     extra_hosts:
@@ -41,6 +56,15 @@ services:
     depends_on:
       database-migrate:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:${PORT_CHAT}/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # ── Memory Service ────────────────────────────────────────────────────────────
   memory-service:
     build:
       context: .
@@ -50,6 +74,7 @@ services:
       - .env
     environment:
       PORT: ${PORT_MEMORY}
+      NODE_ENV: ${NODE_ENV:-development}
     ports:
       - "${PORT_MEMORY}:${PORT_MEMORY}"
     extra_hosts:
@@ -57,6 +82,15 @@ services:
     depends_on:
       database-migrate:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:${PORT_MEMORY}/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # ── Agent Service ─────────────────────────────────────────────────────────────
   agent-service:
     build:
       context: .
@@ -66,6 +100,7 @@ services:
       - .env
     environment:
       PORT: ${PORT_AGENT}
+      NODE_ENV: ${NODE_ENV:-development}
       CHAT_SERVICE_URL: http://chat-service:${PORT_CHAT}
       MEMORY_SERVICE_URL: http://memory-service:${PORT_MEMORY}
     ports:
@@ -75,6 +110,19 @@ services:
     depends_on:
       database-migrate:
         condition: service_completed_successfully
+      chat-service:
+        condition: service_healthy
+      memory-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:${PORT_AGENT}/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # ── Tools Service ─────────────────────────────────────────────────────────────
   tools-service:
     build:
       context: ./backend/tools-service
@@ -83,10 +131,20 @@ services:
       - .env
     environment:
       PORT: ${PORT_TOOLS}
+      NODE_ENV: ${NODE_ENV:-development}
     ports:
       - "${PORT_TOOLS}:${PORT_TOOLS}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:${PORT_TOOLS}/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # ── API Gateway ───────────────────────────────────────────────────────────────
   api-gateway:
     build:
       context: ./backend/api-gateway
@@ -95,28 +153,49 @@ services:
       - .env
     environment:
       PORT: ${PORT_GATEWAY}
+      NODE_ENV: ${NODE_ENV:-development}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:${PORT_FRONTEND}}
       AUTH_SERVICE_URL: http://auth-service:${PORT_AUTH}
       CHAT_SERVICE_URL: http://chat-service:${PORT_CHAT}
       MEMORY_SERVICE_URL: http://memory-service:${PORT_MEMORY}
       AGENT_SERVICE_URL: http://agent-service:${PORT_AGENT}
       TOOLS_SERVICE_URL: http://tools-service:${PORT_TOOLS}
     depends_on:
-      - auth-service
-      - chat-service
-      - memory-service
-      - agent-service
-      - tools-service
+      auth-service:
+        condition: service_healthy
+      chat-service:
+        condition: service_healthy
+      memory-service:
+        condition: service_healthy
+      agent-service:
+        condition: service_healthy
+      tools-service:
+        condition: service_healthy
     ports:
       - "${PORT_GATEWAY}:${PORT_GATEWAY}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:${PORT_GATEWAY}/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # ── Frontend ──────────────────────────────────────────────────────────────────
   frontend:
     build:
       context: ./frontend
+      args:
+        # Baked into the JS bundle at build time.
+        # Local: http://localhost:5000/api
+        # Production: https://api.yourdomain.com/api  (set in .env)
+        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:${PORT_GATEWAY}/api}
     container_name: mann-frontend
     env_file:
       - .env
-    environment:
-      PORT: ${PORT_FRONTEND}
-    depends_on:
-      - api-gateway
     ports:
-      - "${PORT_FRONTEND}:${PORT_FRONTEND}"
+      - "${PORT_FRONTEND}:8000"
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    restart: unless-stopped

@@ -3,7 +3,7 @@ import cors from 'cors'
 import { requestLogger } from './middleware/logger.js'
 
 const app = express()
-app.use(cors())
+app.use(cors())  // internal service — no browser origin needed
 app.use(express.json())
 app.use(requestLogger('tools-service'))
 
