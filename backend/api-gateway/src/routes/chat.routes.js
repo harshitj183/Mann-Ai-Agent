@@ -8,10 +8,46 @@ const router = Router()
 // All chat routes are protected
 router.use(authenticateToken)
 
-// GET /api/chat/messages
-router.get('/messages', async (req, res) => {
+// ─── Conversations ────────────────────────────────────────────────────────────
+
+// GET  /api/chat/conversations
+router.get('/conversations', async (req, res) => {
   const { status, data } = await forwardToService(
-    SERVICES.chat, `/messages/${req.user.id}`, 'GET', null
+    SERVICES.chat, `/conversations/${req.user.id}`, 'GET', null
+  )
+  res.status(status).json(data)
+})
+
+// POST /api/chat/conversations
+router.post('/conversations', async (req, res) => {
+  const { status, data } = await forwardToService(
+    SERVICES.chat, `/conversations/${req.user.id}`, 'POST', req.body
+  )
+  res.status(status).json(data)
+})
+
+// PATCH /api/chat/conversations/:conversationId
+router.patch('/conversations/:conversationId', async (req, res) => {
+  const { status, data } = await forwardToService(
+    SERVICES.chat, `/conversations/${req.user.id}/${req.params.conversationId}`, 'PATCH', req.body
+  )
+  res.status(status).json(data)
+})
+
+// DELETE /api/chat/conversations/:conversationId
+router.delete('/conversations/:conversationId', async (req, res) => {
+  const { status, data } = await forwardToService(
+    SERVICES.chat, `/conversations/${req.user.id}/${req.params.conversationId}`, 'DELETE', null
+  )
+  res.status(status).json(data)
+})
+
+// ─── Messages ─────────────────────────────────────────────────────────────────
+
+// GET /api/chat/messages/:conversationId
+router.get('/messages/:conversationId', async (req, res) => {
+  const { status, data } = await forwardToService(
+    SERVICES.chat, `/messages/${req.user.id}/${req.params.conversationId}`, 'GET', null
   )
   res.status(status).json(data)
 })

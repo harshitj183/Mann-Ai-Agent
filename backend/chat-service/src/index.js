@@ -7,7 +7,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../..', '.env') })
 
 import express from 'express'
 import cors from 'cors'
-import db, { asc, eq, messages } from './db.js'
+import db, { asc, desc, eq, and, conversations, messages } from './db.js'
 import { requestLogger } from './middleware/logger.js'
 
 const app = express()
@@ -21,27 +21,82 @@ app.get('/health', (req, res) => {
   res.json({ service: 'chat-service', status: 'ok', db: 'postgres' })
 })
 
-// Get chat history for a user
-app.get('/messages/:userId', async (req, res) => {
-  // 🔵 .rows — PostgreSQL result mein data .rows array mein hota hai
+// ─── Conversations ────────────────────────────────────────────────────────────
+
+// GET /conversations/:userId  — list all conversations (newest first)
+app.get('/conversations/:userId', async (req, res) => {
+  const rows = await db.select().from(conversations)
+    .where(eq(conversations.userId, Number(req.params.userId)))
+    .orderBy(desc(conversations.updatedAt))
+  res.json({ conversations: rows })
+})
+
+// POST /conversations/:userId  — create a new conversation
+app.post('/conversations/:userId', async (req, res) => {
+  const { title = 'New conversation' } = req.body
+  const [convo] = await db.insert(conversations).values({
+    userId: Number(req.params.userId),
+    title: title.slice(0, 100),
+  }).returning()
+  res.status(201).json({ conversation: convo })
+})
+
+// PATCH /conversations/:userId/:conversationId  — update title or updatedAt
+app.patch('/conversations/:userId/:conversationId', async (req, res) => {
+  const { title } = req.body
+  const updates = { updatedAt: new Date() }
+  if (title) updates.title = title.slice(0, 100)
+
+  await db.update(conversations)
+    .set(updates)
+    .where(and(
+      eq(conversations.id, Number(req.params.conversationId)),
+      eq(conversations.userId, Number(req.params.userId)),
+    ))
+  res.json({ message: 'Conversation updated' })
+})
+
+// DELETE /conversations/:userId/:conversationId
+app.delete('/conversations/:userId/:conversationId', async (req, res) => {
+  await db.delete(conversations).where(and(
+    eq(conversations.id, Number(req.params.conversationId)),
+    eq(conversations.userId, Number(req.params.userId)),
+  ))
+  res.json({ message: 'Conversation deleted' })
+})
+
+// ─── Messages ─────────────────────────────────────────────────────────────────
+
+// GET /messages/:userId/:conversationId  — get messages for a conversation
+// ?limit=20  (default 20, short-term window for agent context)
+app.get('/messages/:userId/:conversationId', async (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 20, 100)
   const rows = await db.select({
     id: messages.id,
     role: messages.role,
     content: messages.content,
-    created_at: messages.createdAt,
-  }).from(messages).where(eq(messages.userId, Number(req.params.userId))).orderBy(asc(messages.createdAt))
+    createdAt: messages.createdAt,
+  }).from(messages)
+    .where(and(
+      eq(messages.userId, Number(req.params.userId)),
+      eq(messages.conversationId, Number(req.params.conversationId)),
+    ))
+    .orderBy(asc(messages.createdAt))
+    .limit(limit)
   res.json({ messages: rows })
 })
 
-// Save a new message
+// POST /messages/:userId  — save a message (user or assistant)
 app.post('/messages/:userId', async (req, res) => {
-  const { role, content } = req.body
+  const { role, content, conversationId } = req.body
   if (!role || !content) {
     return res.status(400).json({ message: 'role and content are required' })
   }
-  // 🟢 RETURNING id — naya row ka id wapas lene ka PostgreSQL tarika
   const [message] = await db.insert(messages).values({
-    userId: Number(req.params.userId), role, content,
+    userId: Number(req.params.userId),
+    conversationId: conversationId ? Number(conversationId) : null,
+    role,
+    content,
   }).returning({ id: messages.id })
   res.status(201).json({ id: message.id, role, content })
 })

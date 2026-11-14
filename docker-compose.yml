@@ -66,6 +66,8 @@ services:
       - .env
     environment:
       PORT: ${PORT_AGENT}
+      CHAT_SERVICE_URL: http://chat-service:${PORT_CHAT}
+      MEMORY_SERVICE_URL: http://memory-service:${PORT_MEMORY}
     ports:
       - "${PORT_AGENT}:${PORT_AGENT}"
     extra_hosts:

@@ -20,55 +20,6 @@ interface Conversation {
   updatedAt: string
 }
 
-const INITIAL: Conversation[] = [
-  {
-    id: 1,
-    title: 'What are LLMs?',
-    updatedAt: 'Today',
-    messages: [
-      { id: 1, role: 'ai', content: 'Hello! How can I assist you today?' },
-      { id: 2, role: 'user', content: 'What are LLMs?' },
-      { id: 3, role: 'ai', content: 'Large Language Models (LLMs) are deep learning models trained on massive text datasets. They can understand context, generate coherent text, answer questions, write code, and much more. Examples include GPT-4, Claude, and Gemini.' },
-    ],
-  },
-  {
-    id: 2,
-    title: 'Help with async/await',
-    updatedAt: 'Today',
-    messages: [
-      { id: 1, role: 'ai', content: 'Hi! Ready to help with your code.' },
-      { id: 2, role: 'user', content: 'Help with async/await' },
-      { id: 3, role: 'ai', content: 'Sure! `async/await` is syntactic sugar over Promises. An `async` function always returns a Promise, and `await` pauses execution until the Promise resolves. Need a specific example?' },
-    ],
-  },
-  {
-    id: 3,
-    title: 'Plan a microservices app',
-    updatedAt: 'Yesterday',
-    messages: [
-      { id: 1, role: 'ai', content: "Let's design your system!" },
-      { id: 2, role: 'user', content: 'Plan a microservices app' },
-      { id: 3, role: 'ai', content: 'For a microservices architecture, start with: 1) API Gateway, 2) Auth Service, 3) Core domain services. Use an event bus for async communication and keep each service independently deployable.' },
-    ],
-  },
-  {
-    id: 4,
-    title: 'Explain React hooks',
-    updatedAt: 'Yesterday',
-    messages: [
-      { id: 1, role: 'ai', content: 'Happy to explain React hooks!' },
-    ],
-  },
-  {
-    id: 5,
-    title: 'SQL vs NoSQL',
-    updatedAt: '2 days ago',
-    messages: [
-      { id: 1, role: 'ai', content: "Great topic. What's your use case?" },
-    ],
-  },
-]
-
 // How many px from each edge triggers auto open/close
 const EDGE_THRESHOLD = 40
 const API_BASE = 'http://localhost:5000/api'
@@ -77,26 +28,78 @@ function formatAgentMarkdown(content: string) {
   return content.replace(/\\n/g, '\n')
 }
 
+function timeLabel(dateStr: string): string {
+  const d = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - d.getTime()
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+  if (diffDays === 0) return 'Today'
+  if (diffDays === 1) return 'Yesterday'
+  return `${diffDays} days ago`
+}
+
 export default function Chat() {
   const { user, logout } = useAuth()
   const { mode, setMode } = useTheme()
   const navigate = useNavigate()
-  const [convos, setConvos] = useState(INITIAL)
-  const [activeId, setActiveId] = useState<number | null>(1)
+  const [convos, setConvos] = useState<Conversation[]>([])
+  const [activeId, setActiveId] = useState<number | null>(null)
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [requestError, setRequestError] = useState('')
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
+  const [loadingConvos, setLoadingConvos] = useState(true)
 
-  // Tracks if user manually locked a sidebar (disables auto-toggle for that side)
   const leftLocked  = useRef(false)
   const rightLocked = useRef(false)
-
-  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hoverTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const active = convos.find(c => c.id === activeId) ?? null
+
+  // ── Load conversations from backend on mount ──
+  useEffect(() => {
+    if (!user) return
+    setLoadingConvos(true)
+    fetch(`${API_BASE}/chat/conversations`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(data => {
+        const loaded: Conversation[] = (data.conversations || []).map((c: { id: number; title: string; updated_at?: string; updatedAt?: string }) => ({
+          id: c.id,
+          title: c.title,
+          messages: [],
+          updatedAt: timeLabel(c.updated_at || c.updatedAt || new Date().toISOString()),
+        }))
+        setConvos(loaded)
+        if (loaded.length > 0) setActiveId(loaded[0].id)
+      })
+      .catch(() => {})
+      .finally(() => setLoadingConvos(false))
+  }, [user])
+
+  // ── Load messages when switching conversations ──
+  useEffect(() => {
+    if (!activeId || !user) return
+    const convo = convos.find(c => c.id === activeId)
+    if (!convo || convo.messages.length > 0) return   // already loaded
+
+    fetch(`${API_BASE}/chat/messages/${activeId}`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(data => {
+        const msgs: Message[] = (data.messages || []).map((m: { id: number; role: string; content: string }) => ({
+          id: m.id,
+          role: m.role === 'assistant' ? 'ai' : 'user',
+          content: m.content,
+        }))
+        // Prepend default greeting if no messages
+        if (msgs.length === 0) {
+          msgs.push({ id: 0, role: 'ai', content: 'Hello! How can I help you?' })
+        }
+        setConvos(p => p.map(c => c.id === activeId ? { ...c, messages: msgs } : c))
+      })
+      .catch(() => {})
+  }, [activeId])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -108,19 +111,16 @@ export default function Chat() {
       if (hoverTimer.current) clearTimeout(hoverTimer.current)
       hoverTimer.current = setTimeout(() => {
         const w = window.innerWidth
-
         if (!leftLocked.current) {
-          if (e.clientX <= EDGE_THRESHOLD)      setLeftOpen(true)
-          else if (e.clientX > 280)             setLeftOpen(false)
+          if (e.clientX <= EDGE_THRESHOLD)  setLeftOpen(true)
+          else if (e.clientX > 280)         setLeftOpen(false)
         }
-
         if (!rightLocked.current) {
-          if (e.clientX >= w - EDGE_THRESHOLD)  setRightOpen(true)
-          else if (e.clientX < w - 260)         setRightOpen(false)
+          if (e.clientX >= w - EDGE_THRESHOLD) setRightOpen(true)
+          else if (e.clientX < w - 260)        setRightOpen(false)
         }
       }, 80)
     }
-
     window.addEventListener('mousemove', onMove)
     return () => {
       window.removeEventListener('mousemove', onMove)
@@ -128,32 +128,44 @@ export default function Chat() {
     }
   }, [])
 
-  // ── Manual handlers ──
-  // Manual open → lock that side (cursor won't auto-close it)
-  const manualOpenLeft  = useCallback(() => { leftLocked.current = true;  setLeftOpen(true)  }, [])
-  const manualOpenRight = useCallback(() => { rightLocked.current = true; setRightOpen(true) }, [])
-
-  // Manual close → unlock that side (cursor can auto-open again)
-  const manualCloseLeft  = useCallback(() => { leftLocked.current = false;  setLeftOpen(false)  }, [])
+  const manualOpenLeft   = useCallback(() => { leftLocked.current = true;  setLeftOpen(true)  }, [])
+  const manualOpenRight  = useCallback(() => { rightLocked.current = true; setRightOpen(true) }, [])
+  const manualCloseLeft  = useCallback(() => { leftLocked.current = false; setLeftOpen(false) }, [])
   const manualCloseRight = useCallback(() => { rightLocked.current = false; setRightOpen(false) }, [])
 
-  // ── Chat logic ──
+  // ── Chat send ──
   const send = async () => {
     if (!input.trim() || isTyping) return
     const request = input.trim()
     setRequestError('')
+
+    // Create a new conversation in backend if none active
     let targetId = activeId
     if (!targetId) {
-      const id = Date.now()
-      const newConvo: Conversation = {
-        id, title: request.slice(0, 40),
-        updatedAt: 'Just now',
-        messages: [{ id: 1, role: 'ai', content: 'Hello! How can I help you?' }],
+      try {
+        const res = await fetch(`${API_BASE}/chat/conversations`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ title: request.slice(0, 60) }),
+        })
+        const data = await res.json()
+        const newConvo: Conversation = {
+          id: data.conversation.id,
+          title: data.conversation.title,
+          messages: [{ id: 0, role: 'ai', content: 'Hello! How can I help you?' }],
+          updatedAt: 'Just now',
+        }
+        setConvos(p => [newConvo, ...p])
+        setActiveId(newConvo.id)
+        targetId = newConvo.id
+      } catch {
+        setRequestError('Failed to create conversation')
+        return
       }
-      setConvos(p => [newConvo, ...p])
-      setActiveId(id)
-      targetId = id
     }
+
+    // Optimistically add user message to UI
     const userMsg: Message = { id: Date.now(), role: 'user', content: request }
     setConvos(p => p.map(c =>
       c.id === targetId ? { ...c, messages: [...c.messages, userMsg], updatedAt: 'Just now' } : c
@@ -164,17 +176,13 @@ export default function Chat() {
     try {
       const response = await fetch(`${API_BASE}/agents/runs`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ request }),
+        body: JSON.stringify({ request, conversationId: targetId }),  // ← pass conversationId
       })
       const data = await response.json()
 
-      if (!response.ok) {
-        throw new Error(data.message || 'Agent request failed')
-      }
+      if (!response.ok) throw new Error(data.message || 'Agent request failed')
 
       const output = data.run?.output
       if (typeof output !== 'string' || !output.trim()) {
@@ -182,17 +190,31 @@ export default function Chat() {
       }
 
       const sources = Array.isArray(data.sources)
-        ? data.sources.filter((source: unknown): source is { title: string; url: string } =>
-          typeof source === 'object' &&
-          source !== null &&
-          typeof (source as { title?: unknown }).title === 'string' &&
-          typeof (source as { url?: unknown }).url === 'string'
-        )
+        ? data.sources.filter((s: unknown): s is { title: string; url: string } =>
+            typeof s === 'object' && s !== null &&
+            typeof (s as { title?: unknown }).title === 'string' &&
+            typeof (s as { url?: unknown }).url === 'string'
+          )
         : []
+
       const aiMsg: Message = { id: Date.now() + 1, role: 'ai', content: output, sources }
       setConvos(p => p.map(c =>
         c.id === targetId ? { ...c, messages: [...c.messages, aiMsg] } : c
       ))
+
+      // Update conversation title on first real message
+      const convo = convos.find(c => c.id === targetId)
+      if (convo && convo.title === 'New conversation') {
+        fetch(`${API_BASE}/chat/conversations/${targetId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ title: request.slice(0, 60) }),
+        }).catch(() => {})
+        setConvos(p => p.map(c =>
+          c.id === targetId ? { ...c, title: request.slice(0, 60) } : c
+        ))
+      }
     } catch (error) {
       setRequestError(error instanceof Error ? error.message : 'Agent request failed')
     } finally {
@@ -206,8 +228,8 @@ export default function Chat() {
 
   const newChat = () => { setActiveId(null); setInput('') }
 
-  const todayConvos  = convos.filter(c => c.updatedAt === 'Today'    || c.updatedAt === 'Just now')
-  const olderConvos  = convos.filter(c => c.updatedAt !== 'Today'    && c.updatedAt !== 'Just now')
+  const todayConvos = convos.filter(c => c.updatedAt === 'Today' || c.updatedAt === 'Just now')
+  const olderConvos = convos.filter(c => c.updatedAt !== 'Today' && c.updatedAt !== 'Just now')
 
   return (
     <div className="gpt-root">
@@ -398,6 +420,10 @@ export default function Chat() {
             </div>
 
             <div className="gpt-history-list">
+              {loadingConvos ? (
+                <div style={{ padding: '12px', opacity: 0.5, fontSize: 13 }}>Loading...</div>
+              ) : (
+                <>
               {todayConvos.length > 0 && (
                 <>
                   <div className="gpt-history-group-label">Today</div>
@@ -423,6 +449,11 @@ export default function Chat() {
                       <div className="gpt-history-item-time">{c.updatedAt}</div>
                     </button>
                   ))}
+                </>
+              )}
+              {convos.length === 0 && (
+                <div style={{ padding: '12px', opacity: 0.5, fontSize: 13 }}>No conversations yet</div>
+              )}
                 </>
               )}
             </div>

@@ -4,6 +4,14 @@ export const MAX_SEARCH_QUERIES = 5
 
 export const AgentState = Annotation.Root({
   userInput: Annotation(),
+  chatHistory: Annotation({
+    reducer: (_, next) => next,
+    default: () => [],
+  }),
+  longTermMemories: Annotation({
+    reducer: (_, next) => next,
+    default: () => [],
+  }),
   plan: Annotation({
     reducer: (_, next) => next,
     default: () => null,
