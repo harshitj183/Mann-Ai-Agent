@@ -98,12 +98,19 @@ async function upsertMemory(userId, key, value, type) {
   }
 }
 
-// Fetch long-term facts (type='fact') for injection into graph
+// Fetch long-term facts for injection into graph (from user_profiles table)
 async function fetchLongTermMemories(userId) {
   try {
     const res = await fetch(`${MEMORY_SERVICE_URL}/memory/${userId}`)
     if (!res.ok) return []
     const data = await res.json()
+    if (data.profile && typeof data.profile === 'object') {
+      return Object.entries(data.profile).map(([key, value]) => ({
+        key,
+        value: typeof value === 'object' ? JSON.stringify(value) : String(value),
+        type: 'fact',
+      }))
+    }
     return (data.memories || []).filter(m => m.type === 'fact')
   } catch (e) {
     console.warn(`⚠️  fetchLongTermMemories error: ${e?.message}`)
@@ -126,14 +133,14 @@ async function fetchSessionMemory(userId, conversationId) {
 }
 
 // Persist memory-agent output:
-//   facts   → memories table (type='fact') via memory-service
+//   facts   → user_profiles table (JSON profile) via memory-service
 //   session → conversations.session_summary column via chat-service
 async function persistMemoryWrites(userId, conversationId, memoryWrites) {
   if (!memoryWrites) return
 
   const { facts, session } = memoryWrites
 
-  // ── Write extracted facts to memories table ───────────────────────────────
+  // ── Write extracted facts to user profile ─────────────────────────────────
   const factResults = []
   for (const { key, value } of (facts || [])) {
     if (key && value) {
@@ -142,7 +149,7 @@ async function persistMemoryWrites(userId, conversationId, memoryWrites) {
     }
   }
   if (factResults.length > 0) {
-    console.log(`║ 💾 facts saved    : ${factResults.join(', ')}`)
+    console.log(`║ 💾 profile facts saved: ${factResults.join(', ')}`)
   }
 
   // ── Write session summary to conversations table ──────────────────────────

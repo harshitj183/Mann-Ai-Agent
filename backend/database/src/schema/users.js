@@ -1,4 +1,4 @@
-import { integer, serial, text, timestamp, pgTable, index } from 'drizzle-orm/pg-core'
+import { integer, serial, text, timestamp, pgTable, index, jsonb } from 'drizzle-orm/pg-core'
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
@@ -6,6 +6,7 @@ export const users = pgTable('users', {
   email: text('email').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   avatar: text('avatar'),
+  profile: jsonb('profile').notNull().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
@@ -21,3 +22,5 @@ export const userSessions = pgTable('user_sessions', {
 }, (table) => ({
   tokenIdx: index('idx_sessions_token').on(table.token),
 }))
+
+

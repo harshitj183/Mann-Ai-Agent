@@ -36,6 +36,13 @@
       "when": 1794478500000,
       "tag": "0004_memories_type_open",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794478600000,
+      "tag": "0005_replace_memories_with_user_profiles",
+      "breakpoints": true
     }
   ]
 }

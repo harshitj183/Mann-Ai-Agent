@@ -28,10 +28,12 @@ app.get('/health', (req, res) => {
 })
 
 app.use('/memory', memoryRouter)
+app.use('/profile', memoryRouter)
 app.use('/skill', skillRouter)
 
 app.listen(PORT, () => {
   console.log(`Memory service running on http://localhost:${PORT}`)
-  console.log('  /memory/:userId  — memory store')
+  console.log('  /profile/:userId — user profile store (JSON facts)')
+  console.log('  /memory/:userId  — memory store (compat)')
   console.log('  /skill/:userId   — skill store')
 })
