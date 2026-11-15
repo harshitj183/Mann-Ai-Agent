@@ -5,6 +5,9 @@ import remarkGfm from 'remark-gfm'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 import MannLogo from '../components/MannLogo'
+import AgentsView from '../components/AgentsView'
+import MemoryView from '../components/MemoryView'
+import ToolsView from '../components/ToolsView'
 
 interface Message {
   id: number
@@ -20,7 +23,7 @@ interface Conversation {
   updatedAt: string
 }
 
-// How many px from each edge triggers auto open/close
+// How many px from each edge triggers auto open/close (desktop only)
 const EDGE_THRESHOLD = 40
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5000/api'
 
@@ -42,13 +45,22 @@ export default function Chat() {
   const { user, logout } = useAuth()
   const { mode, setMode } = useTheme()
   const navigate = useNavigate()
+
+  // Navigation tab: 'chat' | 'agents' | 'memory' | 'tools'
+  const [activeNav, setActiveNav] = useState<'chat' | 'agents' | 'memory' | 'tools'>('chat')
+
   const [convos, setConvos] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<number | null>(null)
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [requestError, setRequestError] = useState('')
-  const [leftOpen, setLeftOpen] = useState(true)
-  const [rightOpen, setRightOpen] = useState(true)
+
+  // Detect mobile (<= 768px)
+  const isMobile = () => (typeof window !== 'undefined' ? window.innerWidth <= 768 : false)
+
+  // Panels closed by default on mobile, open on wider screens
+  const [leftOpen, setLeftOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth > 768 : true))
+  const [rightOpen, setRightOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth > 1024 : true))
   const [loadingConvos, setLoadingConvos] = useState(true)
 
   const leftLocked  = useRef(false)
@@ -56,10 +68,21 @@ export default function Chat() {
   const hoverTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Detect mobile (<= 640px)
-  const isMobile = () => window.innerWidth <= 640
-
   const active = convos.find(c => c.id === activeId) ?? null
+
+  // Ensure sidebars close automatically if screen is resized to mobile width
+  useEffect(() => {
+    const handleResize = () => {
+      if (isMobile()) {
+        leftLocked.current = false
+        rightLocked.current = false
+        setLeftOpen(false)
+        setRightOpen(false)
+      }
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   // ── Load conversations from backend on mount ──
   useEffect(() => {
@@ -105,7 +128,7 @@ export default function Chat() {
         setConvos(p => p.map(c => c.id === activeId ? { ...c, messages: msgs } : c))
       })
       .catch(() => {})
-  }, [activeId])
+  }, [activeId, convos, user])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -114,7 +137,7 @@ export default function Chat() {
   // ── Cursor proximity: auto open/close when not manually locked (desktop only) ──
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
-      if (isMobile()) return  // disabled on mobile, drawers use tap buttons
+      if (isMobile()) return  // disabled on mobile
       if (hoverTimer.current) clearTimeout(hoverTimer.current)
       hoverTimer.current = setTimeout(() => {
         const w = window.innerWidth
@@ -135,16 +158,54 @@ export default function Chat() {
     }
   }, [])
 
-  const manualOpenLeft   = useCallback(() => { leftLocked.current = true;  setLeftOpen(true)  }, [])
-  const manualOpenRight  = useCallback(() => { rightLocked.current = true; setRightOpen(true) }, [])
-  const manualCloseLeft  = useCallback(() => { leftLocked.current = false; setLeftOpen(false) }, [])
-  const manualCloseRight = useCallback(() => { rightLocked.current = false; setRightOpen(false) }, [])
+  const manualOpenLeft = useCallback(() => {
+    leftLocked.current = true
+    if (isMobile()) setRightOpen(false) // Close other panel on mobile
+    setLeftOpen(true)
+  }, [])
+
+  const manualOpenRight = useCallback(() => {
+    rightLocked.current = true
+    if (isMobile()) setLeftOpen(false) // Close other panel on mobile
+    setRightOpen(true)
+  }, [])
+
+  const manualCloseLeft = useCallback(() => {
+    leftLocked.current = false
+    setLeftOpen(false)
+  }, [])
+
+  const manualCloseRight = useCallback(() => {
+    rightLocked.current = false
+    setRightOpen(false)
+  }, [])
 
   // Mobile drawer helpers — close both when backdrop tapped
   const closeDrawers = useCallback(() => {
-    leftLocked.current  = false; setLeftOpen(false)
-    rightLocked.current = false; setRightOpen(false)
+    leftLocked.current  = false
+    setLeftOpen(false)
+    rightLocked.current = false
+    setRightOpen(false)
   }, [])
+
+  // ── Delete conversation handler ──
+  const handleDeleteConvo = async (e: React.MouseEvent, convoId: number) => {
+    e.stopPropagation()
+    // Optimistic removal
+    setConvos(prev => prev.filter(c => c.id !== convoId))
+    if (activeId === convoId) {
+      const remaining = convos.filter(c => c.id !== convoId)
+      setActiveId(remaining.length > 0 ? remaining[0].id : null)
+    }
+    try {
+      await fetch(`${API_BASE}/chat/conversations/${convoId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+    } catch (err) {
+      console.error('Failed to delete conversation:', err)
+    }
+  }
 
   // ── Chat send ──
   const send = async () => {
@@ -192,7 +253,7 @@ export default function Chat() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ request, conversationId: targetId }),  // ← pass conversationId
+        body: JSON.stringify({ request, conversationId: targetId }),
       })
       const data = await response.json()
 
@@ -243,6 +304,7 @@ export default function Chat() {
   const newChat = () => {
     setActiveId(null)
     setInput('')
+    setActiveNav('chat')
     if (isMobile()) closeDrawers()
   }
 
@@ -274,17 +336,35 @@ export default function Chat() {
             </button>
 
             <nav className="gpt-nav">
-              <button className="gpt-nav-item active"><IconChat /> Chat</button>
-              <button className="gpt-nav-item"><IconAgents /> Agents</button>
-              <button className="gpt-nav-item"><IconMemory /> Memory</button>
-              <button className="gpt-nav-item"><IconTools /> Tools</button>
+              <button
+                className={`gpt-nav-item ${activeNav === 'chat' ? 'active' : ''}`}
+                onClick={() => { setActiveNav('chat'); if (isMobile()) closeDrawers() }}
+              >
+                <IconChat /> Chat
+              </button>
+              <button
+                className={`gpt-nav-item ${activeNav === 'agents' ? 'active' : ''}`}
+                onClick={() => { setActiveNav('agents'); if (isMobile()) closeDrawers() }}
+              >
+                <IconAgents /> Agents
+              </button>
+              <button
+                className={`gpt-nav-item ${activeNav === 'memory' ? 'active' : ''}`}
+                onClick={() => { setActiveNav('memory'); if (isMobile()) closeDrawers() }}
+              >
+                <IconMemory /> Memory
+              </button>
+              <button
+                className={`gpt-nav-item ${activeNav === 'tools' ? 'active' : ''}`}
+                onClick={() => { setActiveNav('tools'); if (isMobile()) closeDrawers() }}
+              >
+                <IconTools /> Tools
+              </button>
             </nav>
 
             <div className="gpt-left-spacer" />
 
             <div className="gpt-left-bottom">
-              <button className="gpt-nav-item"><IconSettings /> Settings</button>
-
               <div className="theme-switcher">
                 <button className={`theme-btn ${mode === 'light' ? 'active' : ''}`} onClick={() => setMode('light')} title="Light"><IconSun /></button>
                 <button className={`theme-btn ${mode === 'system' ? 'active' : ''}`} onClick={() => setMode('system')} title="System"><IconSystem /></button>
@@ -315,119 +395,160 @@ export default function Chat() {
         )}
       </aside>
 
-      {/* ── CENTER ── */}
+      {/* ── CENTER AREA ── */}
       <main className="gpt-center">
 
-        {/* Mobile top bar */}
-        <div className="gpt-mobile-topbar">
-          <button className="gpt-icon-btn" onClick={manualOpenLeft} title="Menu">
-            <IconSidebarOpen />
-          </button>
-          <span className="gpt-mobile-topbar-title">
-            {active ? active.title : 'Mann AI'}
-          </span>
-          <button className="gpt-icon-btn" onClick={manualOpenRight} title="History">
+        {/* Top bar with quick navigation pills (visible on both mobile and desktop) */}
+        <div className="gpt-topbar">
+          <div className="gpt-topbar-left">
+            <button className="gpt-icon-btn gpt-mobile-menu-btn" onClick={manualOpenLeft} title="Menu">
+              <IconSidebarOpen />
+            </button>
+            <div className="gpt-nav-pills">
+              <button
+                className={`gpt-pill ${activeNav === 'chat' ? 'active' : ''}`}
+                onClick={() => { setActiveNav('chat'); if (isMobile()) closeDrawers() }}
+              >
+                <IconChat /> <span>Chat</span>
+              </button>
+              <button
+                className={`gpt-pill ${activeNav === 'agents' ? 'active' : ''}`}
+                onClick={() => { setActiveNav('agents'); if (isMobile()) closeDrawers() }}
+              >
+                <IconAgents /> <span>Agents</span>
+              </button>
+              <button
+                className={`gpt-pill ${activeNav === 'memory' ? 'active' : ''}`}
+                onClick={() => { setActiveNav('memory'); if (isMobile()) closeDrawers() }}
+              >
+                <IconMemory /> <span>Memory</span>
+              </button>
+              <button
+                className={`gpt-pill ${activeNav === 'tools' ? 'active' : ''}`}
+                onClick={() => { setActiveNav('tools'); if (isMobile()) closeDrawers() }}
+              >
+                <IconTools /> <span>Tools</span>
+              </button>
+            </div>
+          </div>
+          <button className="gpt-icon-btn gpt-mobile-history-btn" onClick={manualOpenRight} title="History">
             <IconHistory />
           </button>
         </div>
 
-        {active ? (
-          <>
-            <div className="gpt-messages">
-              {active.messages.map(msg => (
-                <div key={msg.id} className={`gpt-msg ${msg.role}`}>
-                  {msg.role === 'ai' && <div className="gpt-msg-avatar ai">M</div>}
-                  <div className={`gpt-msg-content ${msg.role}`}>
-                    {msg.role === 'ai' ? (
-                      <>
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                          {formatAgentMarkdown(msg.content)}
-                        </ReactMarkdown>
-                        {msg.sources?.length ? (
-                          <div className="gpt-sources">
-                            <strong>Sources</strong>
-                            <ul>
-                              {msg.sources.map(source => (
-                                <li key={source.url}>
-                                  <a href={source.url} target="_blank" rel="noreferrer">
-                                    {source.title || source.url}
-                                  </a>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        ) : null}
-                      </>
-                    ) : (
-                      msg.content
+        {/* Sub-view switcher based on activeNav */}
+        {activeNav === 'agents' ? (
+          <AgentsView apiBase={API_BASE} onBackToChat={() => setActiveNav('chat')} />
+        ) : activeNav === 'memory' ? (
+          <MemoryView apiBase={API_BASE} onBackToChat={() => setActiveNav('chat')} />
+        ) : activeNav === 'tools' ? (
+          <ToolsView apiBase={API_BASE} onBackToChat={() => setActiveNav('chat')} />
+        ) : (
+          /* ── CHAT VIEW ── */
+          active ? (
+            <>
+              <div className="gpt-messages">
+                {active.messages.map(msg => (
+                  <div key={msg.id} className={`gpt-msg ${msg.role}`}>
+                    {msg.role === 'ai' && (
+                      <div className="gpt-msg-avatar ai" title="Mann AI">
+                        <img src="/image.png" alt="Mann" className="gpt-avatar-logo" />
+                      </div>
+                    )}
+                    <div className={`gpt-msg-content ${msg.role}`}>
+                      {msg.role === 'ai' ? (
+                        <>
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {formatAgentMarkdown(msg.content)}
+                          </ReactMarkdown>
+                          {msg.sources?.length ? (
+                            <div className="gpt-sources">
+                              <strong>Sources</strong>
+                              <ul>
+                                {msg.sources.map(source => (
+                                  <li key={source.url}>
+                                    <a href={source.url} target="_blank" rel="noreferrer">
+                                      {source.title || source.url}
+                                    </a>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                        </>
+                      ) : (
+                        msg.content
+                      )}
+                    </div>
+                    {msg.role === 'user' && (
+                      <div className="gpt-msg-avatar user">{user?.name?.charAt(0).toUpperCase()}</div>
                     )}
                   </div>
-                  {msg.role === 'user' && (
-                    <div className="gpt-msg-avatar user">{user?.name?.charAt(0).toUpperCase()}</div>
-                  )}
-                </div>
-              ))}
-              {isTyping && (
-                <div className="gpt-msg ai">
-                  <div className="gpt-msg-avatar ai">M</div>
-                  <div className="gpt-msg-content ai gpt-typing">
-                    <span /><span /><span />
+                ))}
+                {isTyping && (
+                  <div className="gpt-msg ai">
+                    <div className="gpt-msg-avatar ai" title="Mann AI">
+                      <img src="/image.png" alt="Mann" className="gpt-avatar-logo" />
+                    </div>
+                    <div className="gpt-msg-content ai gpt-typing">
+                      <span /><span /><span />
+                    </div>
                   </div>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
 
-            <div className="gpt-input-wrap">
-              {requestError && <p className="gpt-error">{requestError}</p>}
-              <div className="gpt-input-box">
-                <button className="gpt-input-icon-btn" title="Attach"><IconAttach /></button>
-                <textarea
-                  rows={1}
-                  value={input}
-                  onChange={e => setInput(e.target.value)}
-                  onKeyDown={onKey}
-                  placeholder="Message Mann AI"
-                />
-                <button
-                  className={`gpt-send-btn ${input.trim() && !isTyping ? 'on' : ''}`}
-                  onClick={send}
-                  disabled={!input.trim() || isTyping}
-                >
-                  <IconSend />
-                </button>
+              <div className="gpt-input-wrap">
+                {requestError && <p className="gpt-error">{requestError}</p>}
+                <div className="gpt-input-box">
+                  <button className="gpt-input-icon-btn" title="Attach"><IconAttach /></button>
+                  <textarea
+                    rows={1}
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    onKeyDown={onKey}
+                    placeholder="Message Mann AI"
+                  />
+                  <button
+                    className={`gpt-send-btn ${input.trim() && !isTyping ? 'on' : ''}`}
+                    onClick={send}
+                    disabled={!input.trim() || isTyping}
+                  >
+                    <IconSend />
+                  </button>
+                </div>
+                <p className="gpt-hint">Press Enter to send · Shift+Enter for new line</p>
               </div>
-              <p className="gpt-hint">Press Enter to send · Shift+Enter for new line</p>
-            </div>
-          </>
-        ) : (
-          <div className="gpt-empty">
-            <div className="gpt-empty-icon">
-              <MannLogo size={40} showText={false} />
-            </div>
-            <h2>How can I help you today?</h2>
-            <p>Start a new conversation or pick one from the history.</p>
-            <div className="gpt-input-wrap" style={{ width: '100%', maxWidth: 640 }}>
-              {requestError && <p className="gpt-error">{requestError}</p>}
-              <div className="gpt-input-box">
-                <button className="gpt-input-icon-btn"><IconAttach /></button>
-                <textarea
-                  rows={1}
-                  value={input}
-                  onChange={e => setInput(e.target.value)}
-                  onKeyDown={onKey}
-                  placeholder="Message Mann AI"
-                />
-                <button
-                  className={`gpt-send-btn ${input.trim() ? 'on' : ''}`}
-                  onClick={send}
-                  disabled={!input.trim() || isTyping}
-                >
-                  <IconSend />
-                </button>
+            </>
+          ) : (
+            <div className="gpt-empty">
+              <div className="gpt-empty-icon">
+                <MannLogo size={40} showText={false} />
+              </div>
+              <h2>How can I help you today?</h2>
+              <p>Start a new conversation or explore Agents, Memory, and Tools.</p>
+              <div className="gpt-input-wrap" style={{ width: '100%', maxWidth: 640 }}>
+                {requestError && <p className="gpt-error">{requestError}</p>}
+                <div className="gpt-input-box">
+                  <button className="gpt-input-icon-btn"><IconAttach /></button>
+                  <textarea
+                    rows={1}
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    onKeyDown={onKey}
+                    placeholder="Message Mann AI"
+                  />
+                  <button
+                    className={`gpt-send-btn ${input.trim() ? 'on' : ''}`}
+                    onClick={send}
+                    disabled={!input.trim() || isTyping}
+                  >
+                    <IconSend />
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          )
         )}
       </main>
 
@@ -451,12 +572,24 @@ export default function Chat() {
                     <>
                       <div className="gpt-history-group-label">Today</div>
                       {todayConvos.map(c => (
-                        <button key={c.id}
-                          className={`gpt-history-item ${c.id === activeId ? 'active' : ''}`}
-                          onClick={() => { setActiveId(c.id); if (isMobile()) closeDrawers() }}
+                        <div
+                          key={c.id}
+                          className={`gpt-history-item-row ${c.id === activeId ? 'active' : ''}`}
+                          onClick={() => { setActiveId(c.id); setActiveNav('chat'); if (isMobile()) closeDrawers() }}
                         >
-                          <div className="gpt-history-item-title">{c.title}</div>
-                        </button>
+                          <div className="gpt-history-item-content">
+                            <div className="gpt-history-item-title">{c.title}</div>
+                          </div>
+                          <button
+                            type="button"
+                            className="gpt-history-delete-btn"
+                            onClick={(e) => handleDeleteConvo(e, c.id)}
+                            title="Delete conversation"
+                            aria-label="Delete conversation"
+                          >
+                            <IconTrash />
+                          </button>
+                        </div>
                       ))}
                     </>
                   )}
@@ -464,13 +597,25 @@ export default function Chat() {
                     <>
                       <div className="gpt-history-group-label">Earlier</div>
                       {olderConvos.map(c => (
-                        <button key={c.id}
-                          className={`gpt-history-item ${c.id === activeId ? 'active' : ''}`}
-                          onClick={() => { setActiveId(c.id); if (isMobile()) closeDrawers() }}
+                        <div
+                          key={c.id}
+                          className={`gpt-history-item-row ${c.id === activeId ? 'active' : ''}`}
+                          onClick={() => { setActiveId(c.id); setActiveNav('chat'); if (isMobile()) closeDrawers() }}
                         >
-                          <div className="gpt-history-item-title">{c.title}</div>
-                          <div className="gpt-history-item-time">{c.updatedAt}</div>
-                        </button>
+                          <div className="gpt-history-item-content">
+                            <div className="gpt-history-item-title">{c.title}</div>
+                            <div className="gpt-history-item-time">{c.updatedAt}</div>
+                          </div>
+                          <button
+                            type="button"
+                            className="gpt-history-delete-btn"
+                            onClick={(e) => handleDeleteConvo(e, c.id)}
+                            title="Delete conversation"
+                            aria-label="Delete conversation"
+                          >
+                            <IconTrash />
+                          </button>
+                        </div>
                       ))}
                     </>
                   )}
@@ -490,9 +635,6 @@ export default function Chat() {
         )}
       </aside>
 
-      {/* ── MOBILE BOTTOM NAV ── */}
-      {/* removed */}
-
       <style>{`
         @keyframes bounce {
           0%,100% { transform: translateY(0); opacity:.3; }
@@ -511,12 +653,16 @@ const IconChat    = () => <svg width="15" height="15" viewBox="0 0 15 15" fill="
 const IconAgents  = () => <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.3"/><path d="M2.5 13c0-2.761 2.239-5 5-5s5 2.239 5 5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
 const IconMemory  = () => <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><ellipse cx="7.5" cy="4.5" rx="5" ry="2" stroke="currentColor" strokeWidth="1.3"/><path d="M2.5 4.5v6c0 1.105 2.239 2 5 2s5-.895 5-2v-6" stroke="currentColor" strokeWidth="1.3"/></svg>
 const IconTools   = () => <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M9.5 2.5a3 3 0 11-4 4L2 10a1.414 1.414 0 002 2l3.5-3.5a3 3 0 014-4z" stroke="currentColor" strokeWidth="1.3"/></svg>
-const IconSettings = () => <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="2" stroke="currentColor" strokeWidth="1.3"/><path d="M7.5 1v1.5M7.5 12.5V14M1 7.5h1.5M12.5 7.5H14M2.929 2.929l1.06 1.06M11.01 11.01l1.06 1.06M2.929 12.07l1.06-1.06M11.01 3.99l1.06-1.06" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
 const IconLogout  = () => <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M9 7H1M9 7L6.5 4.5M9 7L6.5 9.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/><path d="M5 3V2.5A1.5 1.5 0 016.5 1h5A1.5 1.5 0 0113 2.5v9A1.5 1.5 0 0111.5 13h-5A1.5 1.5 0 015 11.5V11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
 const IconAttach  = () => <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M13 7.5L7.5 13a4 4 0 01-5.657-5.657l5.5-5.5a2.5 2.5 0 013.535 3.535L5.4 11.35a1 1 0 01-1.414-1.414L9.5 4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
 const IconSend    = () => <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M12 2L2 5.5l3.5 1.5M12 2L9.5 12 6.5 7M12 2L5.5 7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
 const IconClose   = () => <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
 const IconHistory = () => <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" strokeWidth="1.3"/><path d="M7.5 4.5v3l2 1.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
-const IconSun     = () => <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="2.5" stroke="currentColor" strokeWidth="1.3"/><path d="M7 1v1.5M7 11.5V13M1 7h1.5M11.5 7H13M2.636 2.636l1.06 1.06M10.304 10.304l1.06 1.06M2.636 11.364l1.06-1.06M10.304 3.696l1.06-1.06" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+const IconSun     = () => <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="2.5" r="2.5" stroke="currentColor" strokeWidth="1.3"/><path d="M7 1v1.5M7 11.5V13M1 7h1.5M11.5 7H13M2.636 2.636l1.06 1.06M10.304 10.304l1.06 1.06M2.636 11.364l1.06-1.06M10.304 3.696l1.06-1.06" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
 const IconMoon    = () => <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M12 8.5A5.5 5.5 0 015.5 2a5.5 5.5 0 100 10A5.5 5.5 0 0012 8.5z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
 const IconSystem  = () => <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="2" width="12" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.3"/><path d="M5 12h4M7 10v2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+const IconTrash   = () => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+    <path d="M2.5 4h11M5.5 4V2.5a1 1 0 011-1h3a1 1 0 011 1V4M12.5 4v9a1.5 1.5 0 01-1.5 1.5H5A1.5 1.5 0 013.5 13V4M6.5 7v4.5M9.5 7v4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+)
