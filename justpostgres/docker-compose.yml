@@ -109,7 +109,14 @@ services:
       SERVICES: 0
       TASKS: 0
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Host side is /run/docker.sock, not /var/run/docker.sock.
+      # On a native Linux engine /var/run is a symlink to /run, so both resolve
+      # to the same socket. Inside the Docker Desktop VM /var/run is a separate
+      # directory holding a dead socket, while the live daemon socket lives at
+      # /run/docker.sock -- mounting /var/run/docker.sock there yields a proxy
+      # that answers every request with 502. The container side stays
+      # /var/run/docker.sock, which is what the proxy's DOCKER_HOST expects.
+      - /run/docker.sock:/var/run/docker.sock:ro
 
 volumes:
   control-plane-data:

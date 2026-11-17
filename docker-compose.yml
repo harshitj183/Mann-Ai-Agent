@@ -1,6 +1,5 @@
 services:
-
-  # ── Database migrations (runs once, all others wait for it) ──────────────────
+ # ── Database migrations (runs once, all others wait for it) ──────────────────
   database-migrate:
     build:
       context: .
