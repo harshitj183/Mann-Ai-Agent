@@ -15,5 +15,7 @@ export function requestLogger(serviceName) {
       console.log(`${icon} [${serviceName}] ${req.method} ${req.path} → ${res.statusCode} (${ms}ms)`)
     })
     next()
+
+    
   }
 }

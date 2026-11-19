@@ -102,6 +102,7 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       CHAT_SERVICE_URL: http://chat-service:${PORT_CHAT}
       MEMORY_SERVICE_URL: http://memory-service:${PORT_MEMORY}
+      TOOLS_SERVICE_URL: http://tools-service:${PORT_TOOLS}
     ports:
       - "${PORT_AGENT}:${PORT_AGENT}"
     extra_hosts:
@@ -112,6 +113,8 @@ services:
       chat-service:
         condition: service_healthy
       memory-service:
+        condition: service_healthy
+      tools-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:${PORT_AGENT}/health || exit 1"]

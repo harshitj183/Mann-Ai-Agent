@@ -7,7 +7,10 @@
         "dev": "node --watch src/index.js"
     },
     "dependencies": {
+        "@tavily/core": "^1.0.0",
         "cors": "^2.8.5",
-        "express": "^4.21.0"
+        "dotenv": "16.4.7",
+        "express": "^4.21.0",
+        "mathjs": "^14.5.2"
     }
 }

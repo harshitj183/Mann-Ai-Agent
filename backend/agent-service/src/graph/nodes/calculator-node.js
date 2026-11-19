@@ -1,53 +1,36 @@
-import { create, all } from 'mathjs'
+const TOOLS_SERVICE_URL = process.env.TOOLS_SERVICE_URL || 'http://localhost:3005'
 
-// ─── LangSmith tracing ────────────────────────────────────────────────────────
-// This is a pure JS node — no LLM call. It won't appear as a separate span
-// in LangSmith unless wrapped with traceable(). For now it shows as part of
-// the parent graph run.
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Restricted mathjs instance — disable only JS-escape hatches, keep evaluate()
-const math = create(all)
-
-math.import({
-  import:     () => { throw new Error('disabled') },
-  createUnit: () => { throw new Error('disabled') },
-}, { override: true })
-
-export function createCalculatorNode() {
+export function createCalculatorNode({ toolsUrl = TOOLS_SERVICE_URL } = {}) {
   return async (expression) => {
     // ── console logs ────────────────────────────────────────────────────────
     console.log('\n┌─────────────────────────────────────────')
-    console.log('│ 🧮 CALCULATOR  →  mathjs')
+    console.log('│ 🧮 CALCULATOR  →  tools-service')
     console.log(`│ expression : "${expression}"`)
+    const t0 = Date.now()
     // ────────────────────────────────────────────────────────────────────────
 
-    let calcResult
-    try {
-      const raw = math.evaluate(expression)
-      // math.evaluate can return a Matrix, Unit, etc. — always stringify
-      calcResult = {
-        expression,
-        result: typeof raw?.toString === 'function' ? raw.toString() : String(raw),
-        error: null,
-      }
-    } catch (err) {
-      calcResult = {
-        expression,
-        result: null,
-        error: err instanceof Error ? err.message : 'Calculation failed',
-      }
+    const res = await fetch(`${toolsUrl}/execute`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ toolId: 'calculator', input: { expression } }),
+    })
+
+    if (!res.ok) {
+      const err = await res.text()
+      throw new Error(`tools-service calculator failed: ${res.status} ${err}`)
     }
 
+    const { output } = await res.json()
+
     // ── console logs ────────────────────────────────────────────────────────
-    if (calcResult.error) {
-      console.log(`│ ❌ error : ${calcResult.error}`)
+    if (output.error) {
+      console.log(`│ ❌ error : ${output.error}`)
     } else {
-      console.log(`│ ✅ result : ${calcResult.result}`)
+      console.log(`│ ✅ result : ${output.result}  (${Date.now() - t0}ms)`)
     }
     console.log('└─────────────────────────────────────────')
     // ────────────────────────────────────────────────────────────────────────
 
-    return { calcResult }
+    return { calcResult: output }
   }
 }
