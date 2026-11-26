@@ -85,7 +85,9 @@ async function executeWebSearch({ queries, maxResults }) {
   console.log('\n┌─────────────────────────────────────────')
   console.log('│ 🔍 WEB SEARCH  →  Tavily API')
   console.log(`│ queries (${queries.length}): ${JSON.stringify(queries)}`)
-
+ 
+ 
+  
   const allResults = []
   for (const [i, query] of queries.entries()) {
     const t0 = Date.now()

@@ -146,6 +146,28 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  # ── Execution Service ─────────────────────────────────────────────────────────
+  execution-service:
+    build:
+      context: ./backend/sandbox
+    container_name: mann-execution-service
+    env_file:
+      - .env
+    environment:
+      PORT: ${PORT_EXECUTION}
+      NODE_ENV: ${NODE_ENV:-development}
+      CHROMIUM_PATH: /usr/bin/chromium-browser
+      PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
+    ports:
+      - "${PORT_EXECUTION}:${PORT_EXECUTION}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:${PORT_EXECUTION}/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
   # ── API Gateway ───────────────────────────────────────────────────────────────
   api-gateway:
     build:
@@ -162,6 +184,7 @@ services:
       MEMORY_SERVICE_URL: http://memory-service:${PORT_MEMORY}
       AGENT_SERVICE_URL: http://agent-service:${PORT_AGENT}
       TOOLS_SERVICE_URL: http://tools-service:${PORT_TOOLS}
+      EXECUTION_SERVICE_URL: http://execution-service:${PORT_EXECUTION}
     depends_on:
       auth-service:
         condition: service_healthy
@@ -172,6 +195,8 @@ services:
       agent-service:
         condition: service_healthy
       tools-service:
+        condition: service_healthy
+      execution-service:
         condition: service_healthy
     ports:
       - "${PORT_GATEWAY}:${PORT_GATEWAY}"

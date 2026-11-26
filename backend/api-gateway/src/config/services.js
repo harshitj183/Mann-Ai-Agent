@@ -5,5 +5,6 @@ export const SERVICES = {
   chat:   process.env.CHAT_SERVICE_URL   || `http://${HOST}:3002`,
   agent:  process.env.AGENT_SERVICE_URL  || `http://${HOST}:3004`,
   memory: process.env.MEMORY_SERVICE_URL || `http://${HOST}:3003`,
-  tools:  process.env.TOOLS_SERVICE_URL  || `http://${HOST}:3005`,
+  tools:     process.env.TOOLS_SERVICE_URL     || `http://${HOST}:3005`,
+  execution: process.env.EXECUTION_SERVICE_URL || `http://${HOST}:3006`,
 }
